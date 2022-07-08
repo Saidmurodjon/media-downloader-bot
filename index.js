@@ -1,27 +1,21 @@
 const { Telegraf } = require("telegraf");
-const { TOKEN, MONGODB } = require("./config.js");
+const { TOKEN, MONGODB ,PORT} = require("./config.js");
 const bot = new Telegraf(TOKEN);
 const Controllers = require("./Controllers.js");
-// const Telegraf = require('telegraf');
-// const bot = new Telegraf('123:ABC');
+const express = require("express");
+const app = express();
 
-// bot.telegram.setWebhook("https://saidmurod.uz");
+app.use(bot.webhookCallback("/"));
+bot.telegram.setWebhook("https://c308-37-110-211-20.eu.ngrok.io/");
 
-bot.command('image', (ctx) => ctx.replyWithPhoto({ url: 'https://picsum.photos/200/300/?random' }))
-bot.on('text', (ctx) => ctx.replyWithHTML('<b>Hello</b>'))
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
+bot.on("text", (ctx) => {
 
-// Start webhook directly
-// bot.startWebhook('/secret-path', null, 3000)
-// bot.telegram.setWebhook('https://---.localtunnel.me/secret-path')
+  ctx.telegram.sendMessage(ctx.message.chat.id, `Hello ${ctx.message.from.first_name}`);
 
-// Start webhook via launch method (preferred)
-bot.launch({
-  webhook: {
-    domain: 'https://nodejs-telegraf-testbot.herokuapp.com',
-    port: 8000
-  }
-})
-
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+});
+app.listen(PORT, () => {
+  console.log(`Example app listening on port ${PORT}!`);
+});
