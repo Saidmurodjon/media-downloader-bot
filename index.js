@@ -24,9 +24,8 @@ bot.use(function (ctx, next) {
   }
 });
 
-bot.launch({
-  webhook: {
-    domain: "https://saidmurod.uz",
-    port: 4000,
-  },
-});
+// bot.launch({
+//   webhook: {
+//     domain: "https://saidmurod.uz",
+//   },
+// });

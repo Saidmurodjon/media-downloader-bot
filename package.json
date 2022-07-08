@@ -1,7 +1,7 @@
 {
   "name": "testbot",
   "version": "1.0.0",
-  "description": "",
+  "description": "ulandi",
   "main": "index.js",
   "scripts": {
     "start": "nodemon index.js",
