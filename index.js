@@ -2,38 +2,26 @@ const { Telegraf } = require("telegraf");
 const { TOKEN, MONGODB } = require("./config.js");
 const bot = new Telegraf(TOKEN);
 const Controllers = require("./Controllers.js");
-// bot.command("quit", (ctx) => {
-//   // Explicit usage
-//   ctx.telegram.leaveChat(ctx.message.chat.id);
+// const Telegraf = require('telegraf');
+// const bot = new Telegraf('123:ABC');
 
-//   // Using context shortcut
-//   ctx.leaveChat();
-// });
-
+bot.telegram.setWebhook("https://saidmurod.uz");
+bot.startWebhook(`/${TOKEN}`, null, 4000);
 bot.on("text", (ctx) => {
   // Explicit usage
-  Controllers.MessageController(ctx, bot);
+  ctx.telegram.sendMessage(
+    ctx.message.chat.id,
+    `Hello ${ctx.message.from.username}`
+  );
+
+  // Using context shortcut
+  // ctx.reply(`Hello ${ctx.state.role}`);
+});
+bot.use(function (ctx, next) {
+  try {
+  } catch (e) {
+    console.log("Error");
+  }
 });
 
-// bot.on("callback_query", (ctx) => {
-//   // Explicit usage
-//   ctx.telegram.answerCbQuery(ctx.callbackQuery.id);
-
-//   // Using context shortcut
-//   ctx.answerCbQuery();
-// });
-
-// bot.on("inline_query", (ctx) => {
-//   const result = [];
-//   // Explicit usage
-//   ctx.telegram.answerInlineQuery(ctx.inlineQuery.id, result);
-
-//   // Using context shortcut
-//   ctx.answerInlineQuery(result);
-// });
-
 bot.launch();
-
-// Enable graceful stop
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
