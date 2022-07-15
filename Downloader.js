@@ -23,20 +23,23 @@ async function Instagram(video_url) {
 async function Tiktok(video_url) {
   try {
     const options = {
-      method: 'GET',
-      url: 'https://tiktok-download-without-watermark.p.rapidapi.com/analysis',
-      params: {url: 'https://vt.tiktok.com/ZSd4tMhnb/'},
+      method: "GET",
+      url: "https://tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com/vid/index",
+      params: {
+        url: video_url,
+      },
       headers: {
-        'X-RapidAPI-Key': 'e0bf555747msh4a23654011e1293p1c870djsn025f9fad413a',
-        'X-RapidAPI-Host': 'tiktok-download-without-watermark.p.rapidapi.com'
-      }
+        "X-RapidAPI-Key": "e0bf555747msh4a23654011e1293p1c870djsn025f9fad413a",
+        "X-RapidAPI-Host":
+          "tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com",
+      },
     };
-    
-    
+
     const res = await axios.request(options);
+    console.log(res.data);
     const result = {
-      videoUrl: res.data.video,
-      caption: res.data.caption,
+      videoUrl: res.data.video[0],
+      caption: res.data.author[0],
     };
 
     return result;

@@ -30,6 +30,7 @@ module.exports = class Controllers {
         // console.log(ctx.message);
         await ctx.replyWithChatAction("typing");
         const tik = await Tiktok(ctx.message.text);
+        console.log(tik);
         tik.videoUrl
           ? await ctx.telegram.sendVideo(ctx.message.chat.id, tik.videoUrl, {
               caption: tik.caption,
