@@ -1,25 +1,14 @@
 const axios = require("axios");
-async function Instagram(video_url) {
-  try {
-    const options = {
-      method: "GET",
-      url: "https://instagram-media-downloader.p.rapidapi.com/rapid/post.php",
-      params: { url: video_url },
-      headers: {
-        "X-RapidAPI-Key": "e0bf555747msh4a23654011e1293p1c870djsn025f9fad413a",
-        "X-RapidAPI-Host": "instagram-media-downloader.p.rapidapi.com",
-      },
-    };
-    const res = await axios.request(options);
-    const result = {
-      videoUrl: res.data.video,
-      caption: res.data.caption,
-    };
-    return result;
-  } catch (err) {
-    console.log(err);
-  }
-}
+const {
+  // VKontakte,
+  Instagram,
+  // Facebook,
+  // Snapchat,
+  // Twitter,
+  // YouTube,
+  TikTok,
+} = require("social-downloader-cherry");
+
 async function Tiktok(video_url) {
   try {
     const options = {
@@ -38,11 +27,38 @@ async function Tiktok(video_url) {
     const res = await axios.request(options);
     console.log(res.data);
     const result = {
-      videoUrl: res.data.video[0],
-      caption: res.data.author[0],
+      videoUrl: res.data.video ? res.data.video[0] : false,
+      caption: res.data.author ? res.data.author[0]  +"\n @UpperDownloaderBot" : false,
     };
 
     return result;
+  } catch (err) {
+    console.log(err);
+  }
+}
+async function Instagrams(video_url) {
+  try {
+    // const options = {
+    //   method: "GET",
+    //   url: "https://instagram-media-downloader.p.rapidapi.com/rapid/post.php",
+    //   params: { url: video_url },
+    //   headers: {
+    //     "X-RapidAPI-Key": "e0bf555747msh4a23654011e1293p1c870djsn025f9fad413a",
+    //     "X-RapidAPI-Host": "instagram-media-downloader.p.rapidapi.com",
+    //   },
+    // };
+    // const res = await axios.request(options);
+    const res = await Instagram.getAny(video_url);
+    // console.log(res.data);
+
+    console.log(res.data.errorCode);
+    if (res.data.errorCode===0) {
+      const result = {
+        videoUrl: res.data.body.link,
+        caption: "@UpperDownloaderBot",
+      };
+      return result;
+    }
   } catch (err) {
     console.log(err);
   }
@@ -71,5 +87,5 @@ async function Youtube(video_url) {
   }
 }
 
-module.exports = { Instagram, Tiktok, Youtube };
+module.exports = { Instagrams, Tiktok, Youtube };
 // Download();
