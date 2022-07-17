@@ -1,13 +1,5 @@
 const axios = require("axios");
-const {
-  // VKontakte,
-  Instagram,
-  // Facebook,
-  // Snapchat,
-  // Twitter,
-  // YouTube,
-  TikTok,
-} = require("social-downloader-cherry");
+const { Instagram } = require("social-downloader-cherry");
 
 async function Tiktok(video_url) {
   try {
@@ -28,7 +20,9 @@ async function Tiktok(video_url) {
     console.log(res.data);
     const result = {
       videoUrl: res.data.video ? res.data.video[0] : false,
-      caption: res.data.author ? res.data.author[0]  +"\n @UpperDownloaderBot" : false,
+      caption: res.data.author
+        ? res.data.author[0] + "\n @UpperDownloaderBot"
+        : false,
     };
 
     return result;
@@ -51,8 +45,8 @@ async function Instagrams(video_url) {
     const res = await Instagram.getAny(video_url);
     // console.log(res.data);
 
-    console.log(res.data.errorCode);
-    if (res.data.errorCode===0) {
+    // console.log(res.data.errorCode);
+    if (res.data.errorCode === 0) {
       const result = {
         videoUrl: res.data.body.link,
         caption: "@UpperDownloaderBot",
