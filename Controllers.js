@@ -1,4 +1,4 @@
-const { Instagrams, Tiktok, Youtube } = require("./Downloader");
+const {  Tiktok, Youtube } = require("./Downloader");
 const Functions = require("./functions/Functions");
 const UserModel = require("./user/UserModel");
 const texts = require("./text.json");
@@ -30,33 +30,35 @@ module.exports = class Controllers {
       }
     } else if (text === "/language") {
       await Functions.Languages(ctx);
-    } else if (text.includes("instagram")) {
-      try {
-        //
-        await ctx.replyWithChatAction("typing");
-        const ins = await Instagrams(ctx.message.text);
-        // console.log(ins);
+    } 
+    // else if (text.includes("instagram")) {
+    //   try {
+    //     //
+    //     await ctx.replyWithChatAction("typing");
+    //     const ins = await Instagrams(ctx.message.text);
+    //     // console.log(ins);
 
-        if (ins.videoUrl) {
-          await ctx.telegram.sendVideo(chat_id, ins.videoUrl, {
-            caption: ins.caption,
-          });
-        } else {
-          ctx.telegram.sendMessage(
-            chat_id,
-            user.language == "uz"
-              ? texts.uz.er
-              : user.language == "ru"
-              ? texts.ru.er
-              : user.language == "in"
-              ? texts.in.er
-              : null
-          );
-        }
-      } catch (err) {
-        console.log(err);
-      }
-    } else if (text.includes("tiktok")) {
+    //     if (ins.videoUrl) {
+    //       await ctx.telegram.sendVideo(chat_id, ins.videoUrl, {
+    //         caption: ins.caption,
+    //       });
+    //     } else {
+    //       ctx.telegram.sendMessage(
+    //         chat_id,
+    //         user.language == "uz"
+    //           ? texts.uz.er
+    //           : user.language == "ru"
+    //           ? texts.ru.er
+    //           : user.language == "in"
+    //           ? texts.in.er
+    //           : null
+    //       );
+    //     }
+    //   } catch (err) {
+    //     console.log(err);
+    //   }
+    // } 
+    else if (text.includes("tiktok")) {
       try {
         // console.log(ctx.message);
         await ctx.replyWithChatAction("typing");
