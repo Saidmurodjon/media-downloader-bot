@@ -30,12 +30,12 @@ mongoose
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
-bot.on("text", async (ctx) => {
-  Controllers.MessageController(ctx, bot);
-});
-bot.on("callback_query", async (ctx) => {
-  Controllers.InlineController(ctx);
-});
+  // bot.on("text", async (ctx) => {
+  //   Controllers.MessageController(ctx, bot);
+  // });
+  // bot.on("callback_query", async (ctx) => {
+  //   Controllers.InlineController(ctx);
+  // });
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
 });
