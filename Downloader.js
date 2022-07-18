@@ -42,17 +42,17 @@ async function Instagrams(video_url) {
     //   },
     // };
     // const res = await axios.request(options);
-    const res = await Instagram.getAny(video_url);
+    // const res = await Instagram.getAny(video_url);
     // console.log(res.data);
 
     // console.log(res.data.errorCode);
-    if (res.data.errorCode === 0) {
-      const result = {
-        videoUrl: res.data.body.link,
-        caption: "@UpperDownloaderBot",
-      };
-      return result;
-    }
+    // if (res.data.errorCode === 0) {
+    //   const result = {
+    //     videoUrl: res.data.body.link,
+    //     caption: "@UpperDownloaderBot",
+    //   };
+    //   return result;
+    // }
   } catch (err) {
     console.log(err);
   }
