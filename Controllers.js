@@ -1,4 +1,4 @@
-const {  Tiktok, Youtube ,Instagrams} = require("./Downloader");
+const {  Tiktok, Youtube } = require("./Downloader");
 const Functions = require("./functions/Functions");
 const UserModel = require("./user/UserModel");
 const texts = require("./text.json");
@@ -35,10 +35,10 @@ module.exports = class Controllers {
       try {
         //
         await ctx.replyWithChatAction("typing");
-        const ins = await Instagrams(ctx.message.text);
-        console.log(ins);
+        // const ins = await Instagrams(ctx.message.text);
+        // console.log(ins);
 
-        if (ins) {
+        if (false) {
           await ctx.telegram.sendVideo(chat_id, ins.videoUrl, {
             caption: ins.caption,
           });
