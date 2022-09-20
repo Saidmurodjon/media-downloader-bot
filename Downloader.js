@@ -30,33 +30,33 @@ async function Tiktok(video_url) {
     console.log(err);
   }
 }
-// async function Instagrams(video_url) {
-//   try {
-//     // const options = {
-//     //   method: "GET",
-//     //   url: "https://instagram-media-downloader.p.rapidapi.com/rapid/post.php",
-//     //   params: { url: video_url },
-//     //   headers: {
-//     //     "X-RapidAPI-Key": "e0bf555747msh4a23654011e1293p1c870djsn025f9fad413a",
-//     //     "X-RapidAPI-Host": "instagram-media-downloader.p.rapidapi.com",
-//     //   },
-//     // };
-//     // const res = await axios.request(options);
-//     const res = await Instagram.getAny(video_url);
-//     console.log(video_url);
+async function Instagrams(video_url) {
+  try {
+    // const options = {
+    //   method: "GET",
+    //   url: "https://instagram-media-downloader.p.rapidapi.com/rapid/post.php",
+    //   params: { url: video_url },
+    //   headers: {
+    //     "X-RapidAPI-Key": "e0bf555747msh4a23654011e1293p1c870djsn025f9fad413a",
+    //     "X-RapidAPI-Host": "instagram-media-downloader.p.rapidapi.com",
+    //   },
+    // };
+    // const res = await axios.request(options);
+    const res = await Instagram.getAny(video_url);
+    console.log(video_url);
 
-//     console.log( res);
-//     if (res.data.errorCode === 0) {
-//       const result = {
-//         videoUrl: res.data.body.link,
-//         caption: "@UpperDownloaderBot",
-//       };
-//       return result;
-//     }
-//   } catch (err) {
-//     console.log(err);
-//   }
-// }
+    console.log( res);
+    if (res.data.errorCode === 0) {
+      const result = {
+        videoUrl: res.data.body.link,
+        caption: "@UpperDownloaderBot",
+      };
+      return result;
+    }
+  } catch (err) {
+    console.log(err);
+  }
+}
 async function Youtube(video_url) {
   try {
     // const options = {
@@ -83,6 +83,6 @@ async function Youtube(video_url) {
 module.exports = {
   Tiktok,
   Youtube,
-  // Instagrams,
+  Instagrams,
   };
 // Download();
