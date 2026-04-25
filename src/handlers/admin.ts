@@ -508,7 +508,7 @@ export function registerAdminHandlers(bot: Bot<Context>): void {
       if (!msg) return next();
 
       const forwardOrigin = msg.forward_origin;
-      if (!forwardOrigin && !msg.forward_from && !msg.forward_from_chat) {
+      if (!forwardOrigin) {
         await ctx.reply(t(lang, 'broadcast_forward_message'));
         return;
       }

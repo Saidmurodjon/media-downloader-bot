@@ -1,3 +1,4 @@
+import { InputFile } from 'grammy';
 import type { Context } from 'grammy';
 
 export type FileType = 'video' | 'audio' | 'photo';
@@ -34,7 +35,7 @@ export async function uploadMedia(
   switch (fileType) {
     case 'video': {
       const msg = await ctx.replyWithVideo(
-        { source: Buffer.from(blob), filename: name },
+        new InputFile(Buffer.from(blob), name),
         caption ? { caption } : {},
       );
       const video = msg.video;
@@ -43,7 +44,7 @@ export async function uploadMedia(
     }
     case 'audio': {
       const msg = await ctx.replyWithAudio(
-        { source: Buffer.from(blob), filename: name },
+        new InputFile(Buffer.from(blob), name),
         caption ? { caption } : {},
       );
       const audio = msg.audio;
@@ -52,7 +53,7 @@ export async function uploadMedia(
     }
     case 'photo': {
       const msg = await ctx.replyWithPhoto(
-        { source: Buffer.from(blob), filename: name },
+        new InputFile(Buffer.from(blob), name),
         caption ? { caption } : {},
       );
       const photos = msg.photo;

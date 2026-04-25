@@ -35,7 +35,7 @@ function extractInstagramPath(url: string): string | null {
     if (match?.[0]) {
       try {
         const u = new URL(url.startsWith('http') ? url : `https://${url}`);
-        return u.pathname;
+        return u.pathname.replace(/\/+$/, '');
       } catch {
         return null;
       }

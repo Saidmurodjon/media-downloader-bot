@@ -18,8 +18,8 @@ export function t(
   key: LocaleKey,
   vars?: Record<string, string | number>,
 ): string {
-  const locale = locales[isSupportedLang(lang) ? lang : 'uz'];
-  let text: string = locale[key] ?? locales['uz'][key] ?? key;
+  const locale = locales[isSupportedLang(lang) ? lang : 'uz']!;
+  let text: string = (locale[key] ?? locales['uz']?.[key]) ?? key;
 
   if (vars) {
     for (const [varName, value] of Object.entries(vars)) {
