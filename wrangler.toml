@@ -1,0 +1,22 @@
+# Cloudflare Workers configuration (D1 mode)
+# Only needed if deploying to Cloudflare Workers instead of a VPS.
+
+name = "media-downloader-bot"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+WEBHOOK_URL = "https://your-worker.your-subdomain.workers.dev"
+MAX_FILE_SIZE_MB = "50"
+TMP_DIR = "/tmp/mediabot"
+
+# D1 database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "media-downloader-bot"
+database_id = "YOUR_D1_DATABASE_ID"
+
+# Secrets (set via `wrangler secret put BOT_TOKEN`, etc.)
+# BOT_TOKEN
+# ADMIN_IDS
+# DB_PATH (not needed for D1 mode)

@@ -1,0 +1,7 @@
+[install]
+# Use exact versions for reproducible installs
+exact = false
+
+[run]
+# Auto-load .env on every bun run
+bun = true

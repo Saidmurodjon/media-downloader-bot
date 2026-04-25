@@ -1,2 +1,9 @@
-/node_modules
+node_modules/
 .env
+data/
+/tmp/mediabot/
+*.db
+*.db-shm
+*.db-wal
+dist/
+.wrangler/
