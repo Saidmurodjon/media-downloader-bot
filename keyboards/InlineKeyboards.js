@@ -58,4 +58,16 @@ module.exports = {
       }
     )
   ),
+  theme: new Array(
+    new Array(
+      {
+        text: "🌙 Dark",
+        callback_data: "theme_dark",
+      },
+      {
+        text: "☀️ Light",
+        callback_data: "theme_light",
+      }
+    )
+  ),
 };

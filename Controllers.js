@@ -30,7 +30,9 @@ module.exports = class Controllers {
       }
     } else if (text === "/language") {
       await Functions.Languages(ctx);
-    } 
+    } else if (text === "/theme") {
+      await Functions.ThemeMenu(ctx, user);
+    }
     else if (text.includes("instagram")) {
       try {
         //
@@ -114,7 +116,11 @@ module.exports = class Controllers {
       chatId: up.from.id,
     });
     // console.log(ctx.update.callback_query.data);
-    if ((up.data === "uz" || "ru" || "in") && user.step >= 1) {
+    if (up.data === "theme_dark") {
+      await Functions.SetTheme(ctx, "dark");
+    } else if (up.data === "theme_light") {
+      await Functions.SetTheme(ctx, "light");
+    } else if ((up.data === "uz" || up.data === "ru" || up.data === "in") && user.step >= 1) {
       await Functions.ChooseLanguage(ctx);
     }
   }

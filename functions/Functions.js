@@ -49,6 +49,41 @@ module.exports = class Functions {
     }
   }
 
+  static async ThemeMenu(ctx, user) {
+    const lan = user.language || "in";
+    const texts = require("../text.json");
+    const currentTheme = user.theme || "light";
+    const themeLabel = currentTheme === "dark" ? "🌙 Dark" : "☀️ Light";
+    try {
+      await ctx.telegram.sendMessage(
+        ctx.message.chat.id,
+        `${texts[lan].theme_menu} (${themeLabel})`,
+        {
+          reply_markup: {
+            inline_keyboard: InlineKeyboards.theme,
+          },
+        }
+      );
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
+  static async SetTheme(ctx, theme) {
+    const up = ctx.update.callback_query;
+    const texts = require("../text.json");
+    const user = await UserModel.findOne({ chatId: up.message.chat.id });
+    if (!user) return;
+    const lan = user.language || "in";
+    await UserModel.findByIdAndUpdate(user._id, { theme });
+    const confirmText =
+      theme === "dark" ? texts[lan].theme_set_dark : texts[lan].theme_set_light;
+    await ctx.editMessageText(confirmText, {
+      chat_id: up.message.chat.id,
+      message_id: up.message.message_id,
+    });
+  }
+
   // Contact saqlash
   static async ChooseLanguage(ctx) {
     const up = ctx.update.callback_query;

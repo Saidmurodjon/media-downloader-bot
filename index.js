@@ -9,6 +9,7 @@ bot.telegram.setMyCommands([
   { command: "/start", description: "Start bot" },
   { command: "/about", description: "About Bot" },
   { command: "/language", description: "choose language" },
+  { command: "/theme", description: "Toggle dark/light mode" },
 ]);
 app.use(bot.webhookCallback("/"));
 bot.telegram.setWebhook(BaseURL);

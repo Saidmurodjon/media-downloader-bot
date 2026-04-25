@@ -7,6 +7,7 @@ const userSchema = mongoose.Schema({
   chatId: String,
   language: String,
   step: Number,
+  theme: { type: String, default: "light" },
 });
 
 const UserModel = mongoose.model("UserModel", userSchema);
