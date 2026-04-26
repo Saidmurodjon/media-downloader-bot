@@ -1,8 +1,9 @@
 import { DownloadError, type DownloadResultRemote } from '../types.ts';
 import { isSupported } from '../utils/url.ts';
+import { downloadYouTube, extractYouTubeId } from './youtube.ts';
+import { downloadInstagram, extractInstagramShortcode } from './instagram.ts';
 
 const COBALT_API = 'https://api.cobalt.tools';
-const TIMEOUT_MS = 20_000;
 
 interface CobaltResponse {
   status: 'tunnel' | 'redirect' | 'picker' | 'error';
@@ -13,19 +14,15 @@ interface CobaltResponse {
 }
 
 function guessMediaType(filename = '', url = ''): DownloadResultRemote['mediaType'] {
-  const src = (filename || url).toLowerCase();
-  const ext = src.split('?')[0].split('.').pop() ?? '';
+  const src = (filename || url).toLowerCase().split('?')[0];
+  const ext = src.split('.').pop() ?? '';
   if (['mp3', 'ogg', 'm4a', 'aac', 'wav', 'flac'].includes(ext)) return 'audio';
   if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'photo';
   return 'video';
 }
 
-export async function downloadViaApi(url: string): Promise<DownloadResultRemote> {
-  if (!isSupported(url)) {
-    throw new DownloadError('Unsupported URL', 'unsupported');
-  }
-
-  console.log('[cobalt] →', url);
+async function tryCobalt(url: string): Promise<DownloadResultRemote> {
+  console.log('[cobalt] →', url.slice(0, 80));
 
   let res: Response;
   try {
@@ -33,53 +30,85 @@ export async function downloadViaApi(url: string): Promise<DownloadResultRemote>
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
         'User-Agent': 'Mozilla/5.0 (compatible; MediaBot/2.0)',
       },
       body: JSON.stringify({ url, videoQuality: '720', filenameStyle: 'basic' }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    console.error('[cobalt] network error:', err);
-    throw new DownloadError('Download service unreachable', 'generic');
+    throw new DownloadError(`cobalt network: ${String(err).slice(0, 80)}`, 'generic');
   }
 
   const body = await res.text();
   console.log('[cobalt] http', res.status, body.slice(0, 200));
 
-  if (!res.ok) {
-    throw new DownloadError(`cobalt HTTP ${res.status}`, 'generic');
-  }
+  if (!res.ok) throw new DownloadError(`cobalt HTTP ${res.status}: ${body.slice(0, 80)}`, 'generic');
 
   let data: CobaltResponse;
-  try {
-    data = JSON.parse(body) as CobaltResponse;
-  } catch {
-    throw new DownloadError('cobalt returned invalid JSON', 'generic');
-  }
+  try { data = JSON.parse(body) as CobaltResponse; }
+  catch { throw new DownloadError(`cobalt bad JSON: ${body.slice(0, 80)}`, 'generic'); }
 
   if (data.status === 'error') {
     const code = data.error?.code ?? 'unknown';
-    console.error('[cobalt] error code:', code);
     if (code.includes('content.too_long') || code.includes('content.size')) {
       throw new DownloadError('File too large', 'too_large');
     }
     throw new DownloadError(`cobalt: ${code}`, 'generic');
   }
 
-  // Instagram carousel / multi-item picker
   if (data.status === 'picker') {
-    const video = data.picker?.find((p) => p.type === 'video') ?? data.picker?.[0];
-    if (!video?.url) throw new DownloadError('picker had no URL', 'generic');
-    console.log('[cobalt] picker url:', video.url.slice(0, 80));
-    return { kind: 'remote', url: video.url, filename: data.filename, mediaType: 'video' };
+    const item = data.picker?.find((p) => p.type === 'video') ?? data.picker?.[0];
+    if (!item?.url) throw new DownloadError('picker empty', 'generic');
+    return { kind: 'remote', url: item.url, filename: data.filename, mediaType: 'video' };
   }
 
-  if (!data.url) {
-    throw new DownloadError(`cobalt no url (status=${data.status})`, 'generic');
-  }
+  if (!data.url) throw new DownloadError(`cobalt no url, status=${data.status}`, 'generic');
 
   const mediaType = guessMediaType(data.filename, data.url);
-  console.log('[cobalt] ✓', data.status, mediaType, data.url.slice(0, 80));
+  console.log('[cobalt] ✓', data.status, mediaType);
   return { kind: 'remote', url: data.url, filename: data.filename, mediaType };
+}
+
+export async function downloadViaApi(url: string): Promise<DownloadResultRemote> {
+  if (!isSupported(url)) throw new DownloadError('Unsupported URL', 'unsupported');
+
+  const errors: string[] = [];
+
+  // ── 1. cobalt.tools (handles YouTube, Instagram, TikTok, Twitter) ──
+  try {
+    return await tryCobalt(url);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[api] cobalt failed:', msg);
+    errors.push(`cobalt: ${msg}`);
+
+    // Re-throw non-generic errors (too_large, unsupported)
+    if (err instanceof DownloadError && err.kind !== 'generic') throw err;
+  }
+
+  // ── 2. YouTube INNERTUBE fallback ──────────────────────────────────
+  if (extractYouTubeId(url)) {
+    try {
+      return await downloadYouTube(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[api] youtube fallback failed:', msg);
+      errors.push(`youtube: ${msg}`);
+    }
+  }
+
+  // ── 3. Instagram embed fallback ────────────────────────────────────
+  if (extractInstagramShortcode(url)) {
+    try {
+      return await downloadInstagram(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[api] instagram fallback failed:', msg);
+      errors.push(`instagram: ${msg}`);
+    }
+  }
+
+  // All methods exhausted
+  throw new DownloadError(`All download methods failed:\n${errors.join('\n')}`, 'generic');
 }
