@@ -1,0 +1,113 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: [main, "claude/retry-task-Gn7Qx"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # ── D1 Database ─────────────────────────────────────────────────
+      - name: Create D1 database (idempotent)
+        id: d1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set +e
+          CREATE_OUT=$(wrangler d1 create media-downloader-bot-db 2>&1)
+          set -e
+          echo "$CREATE_OUT"
+
+          # Extract ID from creation output
+          DB_ID=$(echo "$CREATE_OUT" | grep -oP 'database_id\s*=\s*"\K[^"]+' | head -1)
+
+          # If already exists, list and find it
+          if [ -z "$DB_ID" ]; then
+            DB_ID=$(wrangler d1 list --json 2>/dev/null \
+              | python3 -c "
+import sys, json
+for db in json.load(sys.stdin):
+    if db.get('name') == 'media-downloader-bot-db':
+        print(db.get('uuid') or db.get('id', ''))
+        break
+" 2>/dev/null)
+          fi
+
+          if [ -z "$DB_ID" ]; then
+            echo "::error::Could not obtain D1 database ID"
+            exit 1
+          fi
+
+          echo "DB_ID=$DB_ID" >> "$GITHUB_OUTPUT"
+          echo "✅ D1 database ID: $DB_ID"
+
+          # Patch wrangler.toml in-place
+          sed -i "s/REPLACE_AFTER_D1_CREATE/$DB_ID/" wrangler.toml
+
+      - name: Run D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler d1 execute media-downloader-bot-db \
+            --file=migrations/001_init.sql \
+            --remote
+
+      # ── Secrets ─────────────────────────────────────────────────────
+      - name: Set BOT_TOKEN secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          printf '%s' "${{ secrets.BOT_TOKEN }}" | wrangler secret put BOT_TOKEN
+
+      # ── Deploy ──────────────────────────────────────────────────────
+      - name: Deploy worker
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          # Pass ADMIN_IDS as a plain var (not secret — just user IDs)
+          DEPLOY_OUT=$(wrangler deploy \
+            --var ADMIN_IDS:"${{ secrets.ADMIN_IDS }}" 2>&1)
+          echo "$DEPLOY_OUT"
+
+          WORKER_URL=$(echo "$DEPLOY_OUT" | grep -oP 'https://\S+\.workers\.dev' | head -1)
+          if [ -z "$WORKER_URL" ]; then
+            WORKER_NAME=$(grep -oP '^name\s*=\s*"\K[^"]+' wrangler.toml | head -1)
+            WORKER_URL="https://${WORKER_NAME}.workers.dev"
+          fi
+
+          echo "WORKER_URL=$WORKER_URL" >> "$GITHUB_OUTPUT"
+          echo "✅ Worker URL: $WORKER_URL"
+
+      # ── Webhook ─────────────────────────────────────────────────────
+      - name: Register Telegram webhook
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          URL="${{ steps.deploy.outputs.WORKER_URL }}"
+          echo "Registering webhook → $URL"
+          RESP=$(curl -sf -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+            -d "url=${URL}&drop_pending_updates=true")
+          echo "$RESP"
+          echo "$RESP" | python3 -c "
+import sys, json
+r = json.load(sys.stdin)
+if not r.get('ok'):
+    print('::error::setWebhook failed:', r)
+    sys.exit(1)
+print('✅ Webhook registered')
+"

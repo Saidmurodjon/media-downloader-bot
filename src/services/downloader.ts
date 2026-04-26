@@ -1,19 +1,13 @@
 import { mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { DownloadError, type DownloadResult } from '../types.ts';
-
-const YOUTUBE_RE = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)[\w-]+/i;
-const INSTAGRAM_RE = /instagram\.com\/(?:p|reel|stories)\/[\w-]+/i;
+import { DownloadError, type DownloadResultLocal } from '../types.ts';
+import { isSupported } from '../utils/url.ts';
 
 const MAX_FILE_BYTES = Number(process.env.MAX_FILE_SIZE_MB ?? 50) * 1024 * 1024;
-const TEMP_DIR = process.env.TEMP_DIR ?? './tmp';
+export const TEMP_DIR = process.env.TEMP_DIR ?? './tmp';
 const TEMP_TTL_MS = Number(process.env.TEMP_TTL_MINUTES ?? 60) * 60 * 1000;
 
-export function isSupported(url: string): boolean {
-  return YOUTUBE_RE.test(url) || INSTAGRAM_RE.test(url);
-}
-
-export async function download(url: string): Promise<DownloadResult> {
+export async function download(url: string): Promise<DownloadResultLocal> {
   if (!isSupported(url)) {
     throw new DownloadError('Unsupported URL', 'unsupported');
   }
@@ -37,30 +31,28 @@ export async function download(url: string): Promise<DownloadResult> {
     const exitCode = await proc.exited;
 
     if (exitCode !== 0) {
-      const stderrChunks: Uint8Array[] = [];
-      for await (const chunk of proc.stderr) stderrChunks.push(chunk);
-      const stderr = new TextDecoder().decode(Buffer.concat(stderrChunks));
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of proc.stderr) chunks.push(chunk);
+      const stderr = new TextDecoder().decode(Buffer.concat(chunks));
       if (stderr.includes('File is larger than max-filesize')) {
         throw new DownloadError('File too large', 'too_large');
       }
-      throw new DownloadError(`yt-dlp exited with code ${exitCode}: ${stderr}`, 'generic');
+      throw new DownloadError(`yt-dlp exited ${exitCode}: ${stderr}`, 'generic');
     }
 
     const files = readdirSync(sessionDir);
-    if (files.length === 0) {
-      throw new DownloadError('No file produced by yt-dlp', 'generic');
-    }
+    if (files.length === 0) throw new DownloadError('No file produced', 'generic');
 
     const filePath = join(sessionDir, files[0]);
     const ext = files[0].split('.').pop()?.toLowerCase() ?? '';
-    const mediaType: DownloadResult['mediaType'] =
+    const mediaType: DownloadResultLocal['mediaType'] =
       ['mp3', 'ogg', 'm4a', 'aac', 'flac', 'wav'].includes(ext)
         ? 'audio'
         : ['jpg', 'jpeg', 'png', 'webp'].includes(ext)
           ? 'photo'
           : 'video';
 
-    return { filePath, mediaType };
+    return { kind: 'local', filePath, sessionDir, mediaType };
   } catch (err) {
     rmSync(sessionDir, { recursive: true, force: true });
     throw err;
@@ -69,20 +61,14 @@ export async function download(url: string): Promise<DownloadResult> {
 
 export function cleanupTempDir(): void {
   try {
-    const entries = readdirSync(TEMP_DIR);
     const now = Date.now();
-    for (const entry of entries) {
+    for (const entry of readdirSync(TEMP_DIR)) {
       const full = join(TEMP_DIR, entry);
       try {
-        const stat = statSync(full);
-        if (now - stat.mtimeMs > TEMP_TTL_MS) {
+        if (now - statSync(full).mtimeMs > TEMP_TTL_MS) {
           rmSync(full, { recursive: true, force: true });
         }
-      } catch {
-        // skip entries we can't stat
-      }
+      } catch { /* skip */ }
     }
-  } catch {
-    // TEMP_DIR doesn't exist yet — nothing to clean
-  }
+  } catch { /* dir doesn't exist yet */ }
 }

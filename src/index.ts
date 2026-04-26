@@ -2,10 +2,10 @@ import { Hono } from 'hono';
 import { webhookCallback } from 'grammy';
 import { SqliteAdapter } from './db/sqlite.ts';
 import { createBot } from './bot.ts';
-import { cleanupTempDir } from './services/downloader.ts';
+import { download, cleanupTempDir } from './services/downloader.ts';
 
 const TOKEN = process.env.BOT_TOKEN;
-if (!TOKEN) throw new Error('BOT_TOKEN environment variable is required');
+if (!TOKEN) throw new Error('BOT_TOKEN is required');
 
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const PORT = Number(process.env.PORT ?? 3000);
@@ -21,22 +21,18 @@ const adminIds = new Set<number>(
 const db = new SqliteAdapter(DB_PATH);
 await db.init();
 
-const bot = createBot(TOKEN, db, adminIds);
+const bot = createBot(TOKEN, db, adminIds, download);
 
-// Clean up stale temp files on startup
 cleanupTempDir();
 
 if (WEBHOOK_URL) {
-  // Webhook mode (production)
   await bot.api.setWebhook(WEBHOOK_URL);
   const app = new Hono();
   app.post('/', webhookCallback(bot, 'hono'));
   app.get('/', (c) => c.text('Media Downloader Bot is running.'));
-
-  console.log(`Starting webhook server on port ${PORT}, path: /`);
+  console.log(`Webhook server on port ${PORT}`);
   Bun.serve({ fetch: app.fetch, port: PORT });
 } else {
-  // Long-polling mode (development)
-  console.log('Starting bot in long-polling mode...');
+  console.log('Starting in long-polling mode...');
   await bot.start();
 }

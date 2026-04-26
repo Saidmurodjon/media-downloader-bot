@@ -6,7 +6,7 @@ export interface User {
   username: string | null;
   firstName: string;
   language: Language;
-  isAdmin: number; // 0 or 1 (SQLite boolean)
+  isAdmin: number;
   createdAt?: string;
 }
 
@@ -39,7 +39,22 @@ export class DownloadError extends Error {
   }
 }
 
-export interface DownloadResult {
+// Local download (VPS): file is on disk
+export interface DownloadResultLocal {
+  kind: 'local';
   filePath: string;
+  sessionDir: string;
   mediaType: 'video' | 'photo' | 'audio';
 }
+
+// Remote download (Workers): direct URL to pass to Telegram
+export interface DownloadResultRemote {
+  kind: 'remote';
+  url: string;
+  filename?: string;
+  mediaType: 'video' | 'photo' | 'audio';
+}
+
+export type DownloadResult = DownloadResultLocal | DownloadResultRemote;
+
+export type DownloaderFn = (url: string) => Promise<DownloadResult>;
