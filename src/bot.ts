@@ -12,20 +12,13 @@ export function createBot(
 ): Bot {
   const bot = new Bot(token);
 
-  bot.api.setMyCommands([
-    { command: 'start', description: 'Start the bot' },
-    { command: 'language', description: 'Change language' },
-    { command: 'about', description: 'About this bot' },
-    { command: 'admin', description: 'Admin panel' },
-  ]);
-
   registerStartHandlers(bot, db, adminIds);
   registerAdminHandlers(bot, db, adminIds);
-  // Media handler last — catches all text messages that aren't commands
+  // Media handler last — catches all non-command text
   registerMediaHandlers(bot, db, downloader);
 
   bot.catch((err) => {
-    console.error('[bot error]', err.message);
+    console.error('[bot error]', err.message, err.error);
   });
 
   return bot;

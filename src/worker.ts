@@ -10,24 +10,46 @@ interface Env {
   DB: D1Database;
 }
 
+// Module-level flag — persists across requests in the same Worker instance
+let dbReady = false;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Health check
     if (request.method !== 'POST') {
-      return new Response('Media Downloader Bot is running.', { status: 200 });
+      return new Response(
+        JSON.stringify({ ok: true, bot: 'media-downloader-bot' }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
     }
 
-    const adminIds = new Set<number>(
-      (env.ADMIN_IDS ?? '')
-        .split(',')
-        .map((s) => Number(s.trim()))
-        .filter(Boolean),
-    );
+    try {
+      if (!env.BOT_TOKEN) {
+        console.error('[worker] BOT_TOKEN secret is not set!');
+        return new Response('BOT_TOKEN missing', { status: 500 });
+      }
 
-    const db = new D1Adapter(env.DB);
-    await db.init();
+      const adminIds = new Set<number>(
+        (env.ADMIN_IDS ?? '')
+          .split(',')
+          .map((s) => Number(s.trim()))
+          .filter(Boolean),
+      );
 
-    const bot = createBot(env.BOT_TOKEN, db, adminIds, downloadViaApi);
-    const handler = webhookCallback(bot, 'cloudflare-mod');
-    return handler(request);
+      const db = new D1Adapter(env.DB);
+
+      // Init DB tables once per Worker instance lifetime
+      if (!dbReady) {
+        await db.init();
+        dbReady = true;
+      }
+
+      const bot = createBot(env.BOT_TOKEN, db, adminIds, downloadViaApi);
+      const handler = webhookCallback(bot, 'cloudflare-mod');
+      return await handler(request);
+    } catch (err) {
+      console.error('[worker] Unhandled error:', err);
+      return new Response('Internal Server Error', { status: 500 });
+    }
   },
 };

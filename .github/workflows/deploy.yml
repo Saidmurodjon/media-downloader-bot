@@ -20,16 +20,16 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # ── D1 database (create if not exists, then migrate) ────────────
-      - name: Setup D1 database
+      # ── D1 database ──────────────────────────────────────────────────
+      - name: Create D1 database (skip if exists)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: e9928dade1387a975ceeea440a1c0e80
           command: d1 create media-downloader-bot-db
-        continue-on-error: true   # silently skip if already exists
+        continue-on-error: true
 
-      - name: Get D1 database ID
+      - name: Get D1 database ID and patch wrangler.toml
         id: d1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -40,13 +40,14 @@ jobs:
             | head -1)
 
           if [ -z "$DB_ID" ]; then
-            echo "::error::D1 database not found"
+            echo "::error::D1 database not found after create step"
             exit 1
           fi
 
           echo "DB_ID=$DB_ID" >> "$GITHUB_OUTPUT"
-          echo "✅ DB_ID=$DB_ID"
+          echo "✅ database_id = $DB_ID"
           sed -i "s/REPLACE_AFTER_D1_CREATE/$DB_ID/" wrangler.toml
+          grep database_id wrangler.toml
 
       - name: Run D1 migrations
         uses: cloudflare/wrangler-action@v3
@@ -55,15 +56,15 @@ jobs:
           accountId: e9928dade1387a975ceeea440a1c0e80
           command: d1 execute media-downloader-bot-db --file=migrations/001_init.sql --remote
 
-      # ── Set BOT_TOKEN as Worker secret ──────────────────────────────
-      - name: Set BOT_TOKEN secret
+      # ── Worker secret ────────────────────────────────────────────────
+      - name: Set BOT_TOKEN worker secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: e9928dade1387a975ceeea440a1c0e80
         run: |
           echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN
 
-      # ── Deploy ──────────────────────────────────────────────────────
+      # ── Deploy ───────────────────────────────────────────────────────
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:
@@ -71,17 +72,39 @@ jobs:
           accountId: e9928dade1387a975ceeea440a1c0e80
           command: deploy
 
-      # ── Register Telegram webhook ───────────────────────────────────
-      - name: Register Telegram webhook
+      # ── Post-deploy setup (runs once) ────────────────────────────────
+      - name: Set bot commands and webhook
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          URL="https://media-downloader-bot.saidmurodjon1020.workers.dev"
-          echo "Setting webhook → $URL"
+          WORKER_URL="https://media-downloader-bot.saidmurodjon1020.workers.dev"
+
+          # Verify Worker is reachable
+          echo "Checking Worker health..."
+          curl -sf "$WORKER_URL" | jq .
+
+          # Register webhook
+          echo "Setting webhook → $WORKER_URL"
           RESP=$(curl -s -X POST \
             "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
-            -d "url=${URL}&drop_pending_updates=true")
+            -d "url=${WORKER_URL}&drop_pending_updates=true&secret_token=")
           echo "$RESP"
           echo "$RESP" | jq -e '.ok == true' \
-            || { echo "::error::setWebhook failed: $RESP"; exit 1; }
-          echo "✅ Webhook registered"
+            || { echo "::error::setWebhook failed"; exit 1; }
+
+          # Set bot commands
+          curl -s -X POST \
+            "https://api.telegram.org/bot${BOT_TOKEN}/setMyCommands" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "commands": [
+                {"command":"start","description":"Start the bot"},
+                {"command":"language","description":"Change language"},
+                {"command":"about","description":"About this bot"},
+                {"command":"admin","description":"Admin panel"}
+              ]
+            }' | jq .
+
+          # Show webhook info
+          echo "Webhook info:"
+          curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo" | jq .
