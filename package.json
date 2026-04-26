@@ -4,15 +4,22 @@
   "description": "Telegram media downloader bot — YouTube & Instagram via yt-dlp",
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
-    "start": "bun src/index.ts",
-    "db:init": "bun run scripts/init-db.ts"
+    "dev":        "bun run --hot src/index.ts",
+    "start":      "bun src/index.ts",
+    "db:init":    "bun run scripts/init-db.ts",
+    "typecheck":  "tsc --noEmit",
+    "deploy":     "wrangler deploy",
+    "deploy:dry": "wrangler deploy --dry-run",
+    "d1:init":    "wrangler d1 execute media-downloader-bot --file=src/schema.sql",
+    "d1:local":   "wrangler d1 execute media-downloader-bot --local --file=src/schema.sql",
+    "secret:set": "wrangler secret put"
   },
   "dependencies": {
     "grammy": "^1.21.0",
     "hono": "^4.0.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "wrangler": "^4.0.0"
   }
 }

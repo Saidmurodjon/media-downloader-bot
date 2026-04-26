@@ -16,13 +16,13 @@ export function registerStartHandlers(bot: Bot<Context>): void {
     if (!from) return;
 
     const db = getDb();
-    db.upsertUser({
+    await db.upsertUser({
       telegramId: from.id,
       username: from.username,
       firstName: from.first_name,
     });
 
-    const user = db.getUser(from.id);
+    const user = await db.getUser(from.id);
     const lang = user?.language ?? 'uz';
     const name = from.first_name ?? from.username ?? 'User';
 
@@ -36,7 +36,7 @@ export function registerStartHandlers(bot: Bot<Context>): void {
     const from = ctx.from;
     if (!from) return;
     const db = getDb();
-    const user = db.getUser(from.id);
+    const user = await db.getUser(from.id);
     const lang = user?.language ?? 'uz';
 
     await ctx.reply(t(lang, 'choose_language'), {
@@ -52,19 +52,18 @@ export function registerStartHandlers(bot: Bot<Context>): void {
     const lang = match[1] as 'uz' | 'en' | 'ru';
     const db = getDb();
 
-    db.upsertUser({
+    await db.upsertUser({
       telegramId: from.id,
       username: from.username,
       firstName: from.first_name,
       language: lang,
     });
-    db.updateUserLanguage(from.id, lang);
+    await db.updateUserLanguage(from.id, lang);
 
     await ctx.editMessageText(t(lang, 'language_saved'), {
       parse_mode: 'Markdown',
     });
     await ctx.answerCallbackQuery();
-
     await ctx.reply(t(lang, 'send_url_prompt'));
   });
 }

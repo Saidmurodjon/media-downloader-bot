@@ -17,7 +17,7 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
     if (!from) return;
 
     const db = getDb();
-    const user = db.getUser(from.id);
+    const user = await db.getUser(from.id);
     const lang = user?.language ?? 'uz';
 
     if (user?.is_blocked) {
@@ -25,7 +25,7 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
       return;
     }
 
-    db.updateUserActivity(from.id);
+    await db.updateUserActivity(from.id);
 
     const text = ctx.message.text.trim();
 
@@ -51,10 +51,10 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
     const processing = await ctx.reply(t(lang, 'processing'));
 
     try {
-      const cached = db.getCachedMedia(urlHash);
+      const cached = await db.getCachedMedia(urlHash);
       if (cached) {
-        db.incrementCacheCount(urlHash);
-        db.logRequest({ userId: from.id, urlHash, wasCached: true });
+        await db.incrementCacheCount(urlHash);
+        await db.logRequest({ userId: from.id, urlHash, wasCached: true });
 
         await ctx.api.editMessageText(
           ctx.chat.id,
@@ -91,30 +91,16 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
         await cleanupDir(outDir);
 
         if (err instanceof DownloadError) {
-          if (err.kind === 'unsupported') {
-            await ctx.api.editMessageText(
-              ctx.chat.id,
-              processing.message_id,
-              t(lang, 'error_unsupported'),
-            );
-          } else if (err.kind === 'too_large') {
-            await ctx.api.editMessageText(
-              ctx.chat.id,
-              processing.message_id,
-              t(lang, 'error_size'),
-            );
-          } else {
-            await ctx.api.editMessageText(
-              ctx.chat.id,
-              processing.message_id,
-              t(lang, 'error_download'),
-            );
-          }
+          const msgKey =
+            err.kind === 'unsupported' ? 'error_unsupported'
+            : err.kind === 'too_large' ? 'error_size'
+            : 'error_download';
+          await ctx.api.editMessageText(
+            ctx.chat.id, processing.message_id, t(lang, msgKey),
+          );
         } else {
           await ctx.api.editMessageText(
-            ctx.chat.id,
-            processing.message_id,
-            t(lang, 'error_download'),
+            ctx.chat.id, processing.message_id, t(lang, 'error_download'),
           );
         }
         console.error(
@@ -144,7 +130,7 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
         await cleanupDir(outDir);
       }
 
-      db.saveMediaCache({
+      await db.saveMediaCache({
         urlHash,
         originalUrl: normalizedUrl,
         platform,
@@ -153,7 +139,7 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
         title: downloadResult.title,
       });
 
-      db.logRequest({ userId: from.id, urlHash, wasCached: false });
+      await db.logRequest({ userId: from.id, urlHash, wasCached: false });
 
       await ctx.api.editMessageText(
         ctx.chat.id,
@@ -167,9 +153,7 @@ export function registerMediaHandlers(bot: Bot<Context>): void {
       );
       try {
         await ctx.api.editMessageText(
-          ctx.chat.id,
-          processing.message_id,
-          t(lang, 'unknown_error'),
+          ctx.chat.id, processing.message_id, t(lang, 'unknown_error'),
         );
       } catch {
         await ctx.reply(t(lang, 'unknown_error'));

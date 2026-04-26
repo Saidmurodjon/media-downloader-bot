@@ -14,9 +14,8 @@ export const bot = new Bot(token);
 
 bot.catch((err) => {
   const ctx = err.ctx;
-  const from = ctx.from;
   console.error(
-    `[bot] Error for user ${from?.id ?? '?'} at ${new Date().toISOString()}: ${err.error}`,
+    `[bot] Error for user ${ctx.from?.id ?? '?'} at ${new Date().toISOString()}: ${err.error}`,
   );
 });
 
@@ -25,8 +24,7 @@ bot.catch((err) => {
 bot.use(async (ctx, next) => {
   const from = ctx.from;
   if (from && !ctx.callbackQuery) {
-    const db = getDb();
-    db.upsertUser({
+    await getDb().upsertUser({
       telegramId: from.id,
       username: from.username,
       firstName: from.first_name,
@@ -41,19 +39,15 @@ bot.use(async (ctx, next) => {
   const from = ctx.from;
   if (!from) return next();
 
-  const db = getDb();
-  const user = db.getUser(from.id);
+  const user = await getDb().getUser(from.id);
   if (user?.is_blocked) {
-    const lang = user.language;
-    if (ctx.message) {
-      await ctx.reply(t(lang, 'user_blocked'));
-    }
+    if (ctx.message) await ctx.reply(t(user.language, 'user_blocked'));
     return;
   }
   return next();
 });
 
-// ─── Register feature handlers ────────────────────────────────────────────────
+// ─── Feature handlers ─────────────────────────────────────────────────────────
 
 registerStartHandlers(bot);
 registerAdminHandlers(bot);

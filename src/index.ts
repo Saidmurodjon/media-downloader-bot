@@ -1,26 +1,28 @@
 import { Hono } from 'hono';
 import { webhookCallback } from 'grammy';
 import { bot } from './bot.js';
-import { getDb } from './db.js';
+import { setDb, getDb } from './db.js';
+import { createSQLiteAdapter } from './db.sqlite.js';
 import { cleanupStaleTmpDirs, getTmpDir } from './utils/cleanup.js';
 import { readFileSync, mkdirSync } from 'fs';
 import path from 'path';
 
 // ─── DB init ──────────────────────────────────────────────────────────────────
 
-function initDb(): void {
-  const dbDir = path.dirname(process.env['DB_PATH'] ?? './data/bot.db');
-  mkdirSync(dbDir, { recursive: true });
+async function initDb(): Promise<void> {
+  const dbPath = process.env['DB_PATH'] ?? './data/bot.db';
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  setDb(createSQLiteAdapter(dbPath));
 
   const schemaPath = new URL('./schema.sql', import.meta.url).pathname;
   const schema = readFileSync(schemaPath, 'utf-8');
-  getDb().runSchema(schema);
+  await getDb().runSchema(schema);
 }
 
 // ─── Startup tasks ────────────────────────────────────────────────────────────
 
 async function startup(): Promise<void> {
-  initDb();
+  await initDb();
 
   const tmpDir = getTmpDir();
   mkdirSync(tmpDir, { recursive: true });
