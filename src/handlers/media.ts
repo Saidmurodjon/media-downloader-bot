@@ -1,4 +1,3 @@
-import { rmSync } from 'node:fs';
 import type { Bot, Context } from 'grammy';
 import { InputFile } from 'grammy';
 import type { DbAdapter, DownloaderFn } from '../types.ts';
@@ -35,11 +34,10 @@ export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, download
 
     try {
       const result = await downloader(text);
-
       let sentFileId: string;
 
       if (result.kind === 'local') {
-        // VPS path: upload file to Telegram
+        // VPS: upload file to Telegram, then clean up
         if (result.mediaType === 'video') {
           const msg = await ctx.replyWithVideo(new InputFile(result.filePath));
           sentFileId = msg.video.file_id;
@@ -50,10 +48,11 @@ export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, download
           const msg = await ctx.replyWithAudio(new InputFile(result.filePath));
           sentFileId = msg.audio.file_id;
         }
-        // Clean up local file
+        // Lazy import so node:fs is never bundled into the Worker
+        const { rmSync } = await import('node:fs');
         try { rmSync(result.sessionDir, { recursive: true, force: true }); } catch { /* best-effort */ }
       } else {
-        // Workers path: pass remote URL directly to Telegram
+        // Workers: pass remote URL directly to Telegram
         if (result.mediaType === 'video') {
           const msg = await ctx.replyWithVideo(result.url);
           sentFileId = msg.video.file_id;
@@ -70,7 +69,9 @@ export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, download
     } catch (err) {
       const key =
         err instanceof DownloadError
-          ? err.kind === 'unsupported' ? 'unsupported' : err.kind === 'too_large' ? 'tooLarge' : 'error'
+          ? err.kind === 'unsupported' ? 'unsupported'
+          : err.kind === 'too_large' ? 'tooLarge'
+          : 'error'
           : 'error';
       await ctx.reply(t(lang, key));
     } finally {

@@ -18,44 +18,43 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
 
-      # ── D1 Database ─────────────────────────────────────────────────
-      - name: Create D1 database (idempotent)
+      # ── D1 Database ──────────────────────────────────────────────────
+      - name: Create or get D1 database
         id: d1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set +e
           CREATE_OUT=$(wrangler d1 create media-downloader-bot-db 2>&1)
-          set -e
           echo "$CREATE_OUT"
+          set -e
 
-          # Extract ID from creation output
+          # Try to extract ID from creation output
           DB_ID=$(echo "$CREATE_OUT" | grep -oP 'database_id\s*=\s*"\K[^"]+' | head -1)
 
-          # If already exists, list and find it
+          # Database already exists — list and find it
           if [ -z "$DB_ID" ]; then
-            DB_ID=$(wrangler d1 list --json 2>/dev/null \
-              | python3 -c "
-import sys, json
-for db in json.load(sys.stdin):
-    if db.get('name') == 'media-downloader-bot-db':
-        print(db.get('uuid') or db.get('id', ''))
-        break
-" 2>/dev/null)
+            echo "Fetching existing database ID..."
+            LIST_JSON=$(wrangler d1 list --json 2>/dev/null)
+            echo "$LIST_JSON"
+            DB_ID=$(echo "$LIST_JSON" | jq -r \
+              '.[] | select(.name == "media-downloader-bot-db") | .uuid // .id // ""' \
+              2>/dev/null | head -1)
           fi
 
           if [ -z "$DB_ID" ]; then
-            echo "::error::Could not obtain D1 database ID"
+            echo "::error::Could not get D1 database ID"
             exit 1
           fi
 
           echo "DB_ID=$DB_ID" >> "$GITHUB_OUTPUT"
-          echo "✅ D1 database ID: $DB_ID"
+          echo "✅ Database ID: $DB_ID"
 
-          # Patch wrangler.toml in-place
+          # Patch wrangler.toml
           sed -i "s/REPLACE_AFTER_D1_CREATE/$DB_ID/" wrangler.toml
+          cat wrangler.toml
 
       - name: Run D1 migrations
         env:
@@ -66,11 +65,11 @@ for db in json.load(sys.stdin):
             --remote
 
       # ── Secrets ─────────────────────────────────────────────────────
-      - name: Set BOT_TOKEN secret
+      - name: Set BOT_TOKEN worker secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          printf '%s' "${{ secrets.BOT_TOKEN }}" | wrangler secret put BOT_TOKEN
+          echo "${{ secrets.BOT_TOKEN }}" | wrangler secret put BOT_TOKEN
 
       # ── Deploy ──────────────────────────────────────────────────────
       - name: Deploy worker
@@ -78,19 +77,18 @@ for db in json.load(sys.stdin):
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          # Pass ADMIN_IDS as a plain var (not secret — just user IDs)
-          DEPLOY_OUT=$(wrangler deploy \
-            --var ADMIN_IDS:"${{ secrets.ADMIN_IDS }}" 2>&1)
-          echo "$DEPLOY_OUT"
+          wrangler deploy 2>&1 | tee deploy.log
 
-          WORKER_URL=$(echo "$DEPLOY_OUT" | grep -oP 'https://\S+\.workers\.dev' | head -1)
+          # Extract worker URL from deploy output
+          WORKER_URL=$(grep -oP 'https://\S+\.workers\.dev' deploy.log | head -1)
+
+          # Fallback: build URL from known account subdomain
           if [ -z "$WORKER_URL" ]; then
-            WORKER_NAME=$(grep -oP '^name\s*=\s*"\K[^"]+' wrangler.toml | head -1)
-            WORKER_URL="https://${WORKER_NAME}.workers.dev"
+            WORKER_URL="https://media-downloader-bot.saidmurodjon1020.workers.dev"
           fi
 
           echo "WORKER_URL=$WORKER_URL" >> "$GITHUB_OUTPUT"
-          echo "✅ Worker URL: $WORKER_URL"
+          echo "✅ Deployed to: $WORKER_URL"
 
       # ── Webhook ─────────────────────────────────────────────────────
       - name: Register Telegram webhook
@@ -98,16 +96,11 @@ for db in json.load(sys.stdin):
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
           URL="${{ steps.deploy.outputs.WORKER_URL }}"
-          echo "Registering webhook → $URL"
-          RESP=$(curl -sf -X POST \
+          echo "Setting webhook → $URL"
+          RESP=$(curl -s -X POST \
             "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
             -d "url=${URL}&drop_pending_updates=true")
           echo "$RESP"
-          echo "$RESP" | python3 -c "
-import sys, json
-r = json.load(sys.stdin)
-if not r.get('ok'):
-    print('::error::setWebhook failed:', r)
-    sys.exit(1)
-print('✅ Webhook registered')
-"
+          echo "$RESP" | jq -e '.ok == true' \
+            || { echo "::error::setWebhook failed"; exit 1; }
+          echo "✅ Webhook registered"
