@@ -10,41 +10,74 @@ export function extractYouTubeId(url: string): string | null {
   return m?.[1] ?? null;
 }
 
-// Public Invidious instances — they handle YouTube signature decryption
-const INVIDIOUS = [
-  'https://inv.nadeko.net',
-  'https://invidious.nerdvpn.de',
-  'https://yt.artemislena.eu',
-  'https://invidious.privacyredirect.com',
-  'https://invidious.io',
+type MaybeUrl = string | null;
+
+// ── 1. Piped API (open-source YouTube frontend, handles sig decryption) ──
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://piped-api.garudalinux.org',
+  'https://pipedapi.adminforge.de',
+  'https://api.piped.projectsegfau.lt',
+  'https://piped-api.cfe.re',
 ];
 
-interface InvFormat {
-  url: string;
-  qualityLabel?: string;
-  container?: string;
-  type?: string;
+async function tryPiped(videoId: string): Promise<MaybeUrl> {
+  for (const host of PIPED_INSTANCES) {
+    try {
+      const res = await fetch(`${host}/streams/${videoId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) { console.warn(`[piped] ${host} → ${res.status}`); continue; }
+
+      interface PStream { url: string; quality: string; format: string; videoOnly?: boolean }
+      interface PResp { videoStreams?: PStream[]; audioStreams?: PStream[]; error?: string }
+      const data = (await res.json()) as PResp;
+      if (data.error) { console.warn(`[piped] ${host} error:`, data.error); continue; }
+
+      // Prefer muxed MP4 (video+audio combined), then any MP4
+      const streams = data.videoStreams ?? [];
+      const pick =
+        streams.find((s) => s.format === 'MP4' && !s.videoOnly && /720|480|360/.test(s.quality)) ??
+        streams.find((s) => s.format === 'MP4' && !s.videoOnly) ??
+        streams.find((s) => s.format === 'MP4');
+
+      if (pick?.url) {
+        console.log(`[piped] ✓ ${host} ${pick.quality}`);
+        return pick.url;
+      }
+    } catch (err) {
+      console.warn(`[piped] ${host}:`, String(err).slice(0, 60));
+    }
+  }
+  return null;
 }
 
-async function tryInvidious(videoId: string): Promise<DownloadResultRemote | null> {
-  for (const host of INVIDIOUS) {
+// ── 2. Invidious (without local=true — uses their own proxy URLs) ──────────
+const INVIDIOUS_INSTANCES = [
+  'https://inv.nadeko.net',
+  'https://iv.datura.network',
+  'https://invidious.nerdvpn.de',
+  'https://invidious.baczek.me',
+  'https://yt.cdaut.de',
+  'https://invidious.privacyredirect.com',
+  'https://yt.artemislena.eu',
+];
+
+async function tryInvidious(videoId: string): Promise<MaybeUrl> {
+  for (const host of INVIDIOUS_INSTANCES) {
     try {
-      // local=true → direct YouTube CDN URLs (no Invidious proxy)
       const res = await fetch(
-        `${host}/api/v1/videos/${videoId}?fields=formatStreams&local=true`,
+        `${host}/api/v1/videos/${videoId}?fields=formatStreams`,
         { signal: AbortSignal.timeout(10_000) },
       );
-      if (!res.ok) {
-        console.warn(`[invidious] ${host} → HTTP ${res.status}`);
-        continue;
-      }
+      if (!res.ok) { console.warn(`[inv] ${host} → ${res.status}`); continue; }
 
-      const data = (await res.json()) as { formatStreams?: InvFormat[] };
+      interface IStream { url: string; qualityLabel: string; container: string }
+      const data = (await res.json()) as { formatStreams?: IStream[] };
       const streams = (data.formatStreams ?? []).filter(
         (f) => f.url && f.container === 'mp4',
       );
-
-      // Prefer 720p, then 480p, then anything
       const pick =
         streams.find((f) => f.qualityLabel === '720p') ??
         streams.find((f) => f.qualityLabel === '480p') ??
@@ -52,40 +85,58 @@ async function tryInvidious(videoId: string): Promise<DownloadResultRemote | nul
         streams[0];
 
       if (pick?.url) {
-        console.log(`[invidious] ✓ ${host} — ${pick.qualityLabel}`);
-        return {
-          kind: 'remote',
-          url: pick.url,
-          filename: `yt_${videoId}.mp4`,
-          mediaType: 'video',
-        };
+        console.log(`[inv] ✓ ${host} ${pick.qualityLabel}`);
+        return pick.url;
       }
     } catch (err) {
-      console.warn(`[invidious] ${host} error:`, String(err).slice(0, 80));
+      console.warn(`[inv] ${host}:`, String(err).slice(0, 60));
     }
   }
   return null;
 }
 
-// INNERTUBE direct — works for some videos without cipher
-interface IFormat { url?: string; mimeType?: string; height?: number; signatureCipher?: string }
-interface IResponse {
-  playabilityStatus?: { status: string };
-  streamingData?: { formats?: IFormat[]; adaptiveFormats?: IFormat[] };
+// ── 3. YouTube watch page — extract ytInitialPlayerResponse ─────────────────
+async function tryWatchPage(videoId: string): Promise<MaybeUrl> {
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\})\s*;(?:var |<\/script>)/s);
+    if (!match) { console.warn('[page] ytInitialPlayerResponse not found'); return null; }
+
+    interface Fmt { url?: string; mimeType?: string; height?: number }
+    const pr = JSON.parse(match[1]) as { streamingData?: { formats?: Fmt[]; adaptiveFormats?: Fmt[] } };
+    const formats = [
+      ...(pr.streamingData?.formats ?? []),
+      ...(pr.streamingData?.adaptiveFormats ?? []),
+    ];
+
+    const fmt = formats
+      .filter((f) => f.url && f.mimeType?.startsWith('video/mp4') && (f.height ?? 999) <= 720)
+      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0];
+
+    if (fmt?.url) { console.log(`[page] ✓ ${fmt.height}p`); return fmt.url; }
+  } catch (err) {
+    console.warn('[page]', String(err).slice(0, 80));
+  }
+  return null;
 }
 
-async function tryInnertube(videoId: string): Promise<DownloadResultRemote | null> {
+// ── 4. INNERTUBE direct (works for non-ciphered videos) ─────────────────────
+async function tryInnertube(videoId: string): Promise<MaybeUrl> {
   const clients = [
-    {
-      ctx: { clientName: 'ANDROID', clientVersion: '19.44.38', androidSdkVersion: 30, hl: 'en', gl: 'US' },
-      ua: 'com.google.android.youtube/19.44.38 (Linux; U; Android 11) gzip',
-      name: '3',
-    },
-    {
-      ctx: { clientName: 'IOS', clientVersion: '19.45.4', deviceModel: 'iPhone16,2', osVersion: '17.5.1.21F90', hl: 'en', gl: 'US' },
-      ua: 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)',
-      name: '5',
-    },
+    { name: 'ANDROID', version: '19.44.38', xname: '3',
+      ua: 'com.google.android.youtube/19.44.38 (Linux; U; Android 11) gzip' },
+    { name: 'IOS', version: '19.45.4', xname: '5',
+      ua: 'com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)' },
   ];
 
   for (const c of clients) {
@@ -95,31 +146,33 @@ async function tryInnertube(videoId: string): Promise<DownloadResultRemote | nul
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': c.ua,
-          'X-YouTube-Client-Name': c.name,
-          'X-YouTube-Client-Version': c.ctx.clientVersion,
+          'X-YouTube-Client-Name': c.xname,
+          'X-YouTube-Client-Version': c.version,
         },
-        body: JSON.stringify({ videoId, context: { client: c.ctx } }),
+        body: JSON.stringify({
+          videoId,
+          context: { client: { clientName: c.name, clientVersion: c.version,
+            androidSdkVersion: c.name === 'ANDROID' ? 30 : undefined,
+            hl: 'en', gl: 'US' } },
+        }),
         signal: AbortSignal.timeout(12_000),
       });
-
       if (!res.ok) continue;
-      const data = (await res.json()) as IResponse;
+
+      interface IF { url?: string; mimeType?: string; height?: number }
+      interface IR { playabilityStatus?: { status: string }; streamingData?: { formats?: IF[]; adaptiveFormats?: IF[] } }
+      const data = (await res.json()) as IR;
       if (data.playabilityStatus?.status !== 'OK') continue;
 
-      const formats = [
+      const fmt = [
         ...(data.streamingData?.formats ?? []),
         ...(data.streamingData?.adaptiveFormats ?? []),
-      ];
-
-      const fmt = formats
+      ]
         .filter((f) => f.url && f.mimeType?.startsWith('video/mp4') && (f.height ?? 999) <= 720)
         .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0];
 
-      if (fmt?.url) {
-        console.log(`[innertube] ✓ ${c.ctx.clientName} ${fmt.height}p`);
-        return { kind: 'remote', url: fmt.url, filename: `yt_${videoId}.mp4`, mediaType: 'video' };
-      }
-    } catch { /* try next */ }
+      if (fmt?.url) { console.log(`[innertube] ✓ ${c.name} ${fmt.height}p`); return fmt.url; }
+    } catch { /* next */ }
   }
   return null;
 }
@@ -127,18 +180,27 @@ async function tryInnertube(videoId: string): Promise<DownloadResultRemote | nul
 export async function downloadYouTube(url: string): Promise<DownloadResultRemote> {
   const videoId = extractYouTubeId(url);
   if (!videoId) throw new DownloadError('Cannot extract YouTube video ID', 'unsupported');
-  console.log('[youtube] videoId:', videoId);
+  console.log('[youtube] id:', videoId);
 
-  // 1. Invidious (handles signature decryption — most reliable)
-  const inv = await tryInvidious(videoId);
-  if (inv) return inv;
+  const errors: string[] = [];
 
-  // 2. INNERTUBE direct (works for non-ciphered videos)
-  const inn = await tryInnertube(videoId);
-  if (inn) return inn;
+  const attempts: Array<[string, () => Promise<MaybeUrl>]> = [
+    ['Piped', () => tryPiped(videoId)],
+    ['Invidious', () => tryInvidious(videoId)],
+    ['WatchPage', () => tryWatchPage(videoId)],
+    ['Innertube', () => tryInnertube(videoId)],
+  ];
 
-  throw new DownloadError(
-    'YouTube: all Invidious instances failed and no direct stream found',
-    'generic',
-  );
+  for (const [label, fn] of attempts) {
+    try {
+      const u = await fn();
+      if (u) return { kind: 'remote', url: u, filename: `yt_${videoId}.mp4`, mediaType: 'video' };
+      errors.push(`${label}: no url`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${label}: ${msg}`);
+    }
+  }
+
+  throw new DownloadError(`YouTube failed:\n${errors.join('\n')}`, 'generic');
 }
