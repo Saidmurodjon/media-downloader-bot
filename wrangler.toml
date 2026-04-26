@@ -9,9 +9,9 @@ MAX_FILE_SIZE_MB = "50"
 # BOT_TOKEN, ADMIN_IDS, WEBHOOK_URL, DOWNLOAD_SERVICE_URL
 
 [[d1_databases]]
-binding = "DB"
+binding       = "DB"
 database_name = "media-downloader-bot"
-database_id   = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id   = "4d1a66c2-7d63-4d7f-ad53-8f513759f58c"
 
 [build]
 command = ""
