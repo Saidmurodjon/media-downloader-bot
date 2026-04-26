@@ -3,71 +3,41 @@ import { isSupported } from '../utils/url.ts';
 import { downloadYouTube, extractYouTubeId } from './youtube.ts';
 import { downloadInstagram, extractInstagramShortcode } from './instagram.ts';
 
-const COBALT_API = 'https://api.cobalt.tools';
+const TIKTOK_RE = /tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com/i;
 
-interface CobaltResponse {
-  status: 'tunnel' | 'redirect' | 'picker' | 'error';
-  url?: string;
-  filename?: string;
-  picker?: Array<{ type: string; url: string }>;
-  error?: { code: string };
-}
+// TikTok via public API (no key required)
+async function downloadTikTok(url: string): Promise<DownloadResultRemote> {
+  console.log('[tiktok] →', url.slice(0, 80));
 
-function guessMediaType(filename = '', url = ''): DownloadResultRemote['mediaType'] {
-  const src = (filename || url).toLowerCase().split('?')[0];
-  const ext = src.split('.').pop() ?? '';
-  if (['mp3', 'ogg', 'm4a', 'aac', 'wav', 'flac'].includes(ext)) return 'audio';
-  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'photo';
-  return 'video';
-}
-
-async function tryCobalt(url: string): Promise<DownloadResultRemote> {
-  console.log('[cobalt] →', url.slice(0, 80));
-
-  let res: Response;
-  try {
-    res = await fetch(COBALT_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; MediaBot/2.0)',
-      },
-      body: JSON.stringify({ url, videoQuality: '720', filenameStyle: 'basic' }),
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch (err) {
-    throw new DownloadError(`cobalt network: ${String(err).slice(0, 80)}`, 'generic');
+  // Resolve short links first (vm.tiktok.com/xxx → full URL)
+  let resolved = url;
+  if (/vm\.|vt\./.test(url)) {
+    try {
+      const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(8_000) });
+      resolved = r.url;
+      console.log('[tiktok] resolved:', resolved.slice(0, 80));
+    } catch { /* use original */ }
   }
 
-  const body = await res.text();
-  console.log('[cobalt] http', res.status, body.slice(0, 200));
+  // tikwm.com — free, no key needed
+  const apiRes = await fetch('https://www.tikwm.com/api/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ url: resolved, count: '1', cursor: '0', hd: '1' }),
+    signal: AbortSignal.timeout(20_000),
+  });
 
-  if (!res.ok) throw new DownloadError(`cobalt HTTP ${res.status}: ${body.slice(0, 80)}`, 'generic');
+  if (!apiRes.ok) throw new DownloadError(`TikTok API HTTP ${apiRes.status}`, 'generic');
 
-  let data: CobaltResponse;
-  try { data = JSON.parse(body) as CobaltResponse; }
-  catch { throw new DownloadError(`cobalt bad JSON: ${body.slice(0, 80)}`, 'generic'); }
+  interface TikwmResp { code: number; data?: { play?: string; hdplay?: string; title?: string } }
+  const data = (await apiRes.json()) as TikwmResp;
+  console.log('[tiktok] code:', data.code);
 
-  if (data.status === 'error') {
-    const code = data.error?.code ?? 'unknown';
-    if (code.includes('content.too_long') || code.includes('content.size')) {
-      throw new DownloadError('File too large', 'too_large');
-    }
-    throw new DownloadError(`cobalt: ${code}`, 'generic');
-  }
+  const videoUrl = data.data?.hdplay || data.data?.play;
+  if (!videoUrl) throw new DownloadError('TikTok: no video URL in response', 'generic');
 
-  if (data.status === 'picker') {
-    const item = data.picker?.find((p) => p.type === 'video') ?? data.picker?.[0];
-    if (!item?.url) throw new DownloadError('picker empty', 'generic');
-    return { kind: 'remote', url: item.url, filename: data.filename, mediaType: 'video' };
-  }
-
-  if (!data.url) throw new DownloadError(`cobalt no url, status=${data.status}`, 'generic');
-
-  const mediaType = guessMediaType(data.filename, data.url);
-  console.log('[cobalt] ✓', data.status, mediaType);
-  return { kind: 'remote', url: data.url, filename: data.filename, mediaType };
+  console.log('[tiktok] ✓', videoUrl.slice(0, 80));
+  return { kind: 'remote', url: videoUrl, filename: 'tiktok.mp4', mediaType: 'video' };
 }
 
 export async function downloadViaApi(url: string): Promise<DownloadResultRemote> {
@@ -75,40 +45,43 @@ export async function downloadViaApi(url: string): Promise<DownloadResultRemote>
 
   const errors: string[] = [];
 
-  // ── 1. cobalt.tools (handles YouTube, Instagram, TikTok, Twitter) ──
-  try {
-    return await tryCobalt(url);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn('[api] cobalt failed:', msg);
-    errors.push(`cobalt: ${msg}`);
-
-    // Re-throw non-generic errors (too_large, unsupported)
-    if (err instanceof DownloadError && err.kind !== 'generic') throw err;
-  }
-
-  // ── 2. YouTube INNERTUBE fallback ──────────────────────────────────
+  // ── YouTube ────────────────────────────────────────────────────────
   if (extractYouTubeId(url)) {
     try {
       return await downloadYouTube(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn('[api] youtube fallback failed:', msg);
+      console.warn('[api] youtube failed:', msg);
       errors.push(`youtube: ${msg}`);
+      if (err instanceof DownloadError && err.kind !== 'generic') throw err;
     }
   }
 
-  // ── 3. Instagram embed fallback ────────────────────────────────────
+  // ── Instagram ──────────────────────────────────────────────────────
   if (extractInstagramShortcode(url)) {
     try {
       return await downloadInstagram(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn('[api] instagram fallback failed:', msg);
+      console.warn('[api] instagram failed:', msg);
       errors.push(`instagram: ${msg}`);
+      if (err instanceof DownloadError && err.kind !== 'generic') throw err;
     }
   }
 
-  // All methods exhausted
-  throw new DownloadError(`All download methods failed:\n${errors.join('\n')}`, 'generic');
+  // ── TikTok ─────────────────────────────────────────────────────────
+  if (TIKTOK_RE.test(url)) {
+    try {
+      return await downloadTikTok(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[api] tiktok failed:', msg);
+      errors.push(`tiktok: ${msg}`);
+    }
+  }
+
+  throw new DownloadError(
+    `All download methods failed:\n${errors.join('\n')}`,
+    'generic',
+  );
 }
