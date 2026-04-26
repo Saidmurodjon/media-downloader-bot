@@ -20,87 +20,68 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # ── D1 Database ──────────────────────────────────────────────────
-      - name: Create or get D1 database
+      # ── D1 database (create if not exists, then migrate) ────────────
+      - name: Setup D1 database
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: e9928dade1387a975ceeea440a1c0e80
+          command: d1 create media-downloader-bot-db
+        continue-on-error: true   # silently skip if already exists
+
+      - name: Get D1 database ID
         id: d1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: e9928dade1387a975ceeea440a1c0e80
         run: |
-          set +e
-          CREATE_OUT=$(wrangler d1 create media-downloader-bot-db 2>&1)
-          echo "$CREATE_OUT"
-          set -e
-
-          # Try to extract ID from creation output
-          DB_ID=$(echo "$CREATE_OUT" | grep -oP 'database_id\s*=\s*"\K[^"]+' | head -1)
-
-          # Database already exists — list and find it
-          if [ -z "$DB_ID" ]; then
-            echo "Fetching existing database ID..."
-            LIST_JSON=$(wrangler d1 list --json 2>/dev/null)
-            echo "$LIST_JSON"
-            DB_ID=$(echo "$LIST_JSON" | jq -r \
-              '.[] | select(.name == "media-downloader-bot-db") | .uuid // .id // ""' \
-              2>/dev/null | head -1)
-          fi
+          DB_ID=$(npx wrangler d1 list --json \
+            | jq -r '.[] | select(.name == "media-downloader-bot-db") | .uuid // .id' \
+            | head -1)
 
           if [ -z "$DB_ID" ]; then
-            echo "::error::Could not get D1 database ID"
+            echo "::error::D1 database not found"
             exit 1
           fi
 
           echo "DB_ID=$DB_ID" >> "$GITHUB_OUTPUT"
-          echo "✅ Database ID: $DB_ID"
-
-          # Patch wrangler.toml
+          echo "✅ DB_ID=$DB_ID"
           sed -i "s/REPLACE_AFTER_D1_CREATE/$DB_ID/" wrangler.toml
-          cat wrangler.toml
 
       - name: Run D1 migrations
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          wrangler d1 execute media-downloader-bot-db \
-            --file=migrations/001_init.sql \
-            --remote
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: e9928dade1387a975ceeea440a1c0e80
+          command: d1 execute media-downloader-bot-db --file=migrations/001_init.sql --remote
 
-      # ── Secrets ─────────────────────────────────────────────────────
-      - name: Set BOT_TOKEN worker secret
+      # ── Set BOT_TOKEN as Worker secret ──────────────────────────────
+      - name: Set BOT_TOKEN secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: e9928dade1387a975ceeea440a1c0e80
         run: |
-          echo "${{ secrets.BOT_TOKEN }}" | wrangler secret put BOT_TOKEN
+          echo "${{ secrets.BOT_TOKEN }}" | npx wrangler secret put BOT_TOKEN
 
       # ── Deploy ──────────────────────────────────────────────────────
-      - name: Deploy worker
-        id: deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          wrangler deploy 2>&1 | tee deploy.log
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: e9928dade1387a975ceeea440a1c0e80
+          command: deploy
 
-          # Extract worker URL from deploy output
-          WORKER_URL=$(grep -oP 'https://\S+\.workers\.dev' deploy.log | head -1)
-
-          # Fallback: build URL from known account subdomain
-          if [ -z "$WORKER_URL" ]; then
-            WORKER_URL="https://media-downloader-bot.saidmurodjon1020.workers.dev"
-          fi
-
-          echo "WORKER_URL=$WORKER_URL" >> "$GITHUB_OUTPUT"
-          echo "✅ Deployed to: $WORKER_URL"
-
-      # ── Webhook ─────────────────────────────────────────────────────
+      # ── Register Telegram webhook ───────────────────────────────────
       - name: Register Telegram webhook
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          URL="${{ steps.deploy.outputs.WORKER_URL }}"
+          URL="https://media-downloader-bot.saidmurodjon1020.workers.dev"
           echo "Setting webhook → $URL"
           RESP=$(curl -s -X POST \
             "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
             -d "url=${URL}&drop_pending_updates=true")
           echo "$RESP"
           echo "$RESP" | jq -e '.ok == true' \
-            || { echo "::error::setWebhook failed"; exit 1; }
+            || { echo "::error::setWebhook failed: $RESP"; exit 1; }
           echo "✅ Webhook registered"
