@@ -2,14 +2,22 @@ import { DownloadError, type DownloadResultRemote } from '../types.ts';
 import { isSupported } from '../utils/url.ts';
 
 const COBALT_API = 'https://api.cobalt.tools';
+const TIMEOUT_MS = 20_000;
 
 interface CobaltResponse {
   status: 'tunnel' | 'redirect' | 'picker' | 'error';
   url?: string;
   filename?: string;
-  audio?: string;
-  picker?: Array<{ type: string; url: string; thumb?: string }>;
+  picker?: Array<{ type: string; url: string }>;
   error?: { code: string };
+}
+
+function guessMediaType(filename = '', url = ''): DownloadResultRemote['mediaType'] {
+  const src = (filename || url).toLowerCase();
+  const ext = src.split('?')[0].split('.').pop() ?? '';
+  if (['mp3', 'ogg', 'm4a', 'aac', 'wav', 'flac'].includes(ext)) return 'audio';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'photo';
+  return 'video';
 }
 
 export async function downloadViaApi(url: string): Promise<DownloadResultRemote> {
@@ -17,7 +25,7 @@ export async function downloadViaApi(url: string): Promise<DownloadResultRemote>
     throw new DownloadError('Unsupported URL', 'unsupported');
   }
 
-  console.log('[downloader-api] requesting:', url);
+  console.log('[cobalt] →', url);
 
   let res: Response;
   try {
@@ -26,60 +34,52 @@ export async function downloadViaApi(url: string): Promise<DownloadResultRemote>
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0',
+        'User-Agent': 'Mozilla/5.0 (compatible; MediaBot/2.0)',
       },
-      body: JSON.stringify({
-        url,
-        videoQuality: '720',
-        filenameStyle: 'basic',
-        downloadMode: 'auto',
-      }),
+      body: JSON.stringify({ url, videoQuality: '720', filenameStyle: 'basic' }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {
-    console.error('[downloader-api] fetch error:', err);
-    throw new DownloadError('Could not reach cobalt API', 'generic');
+    console.error('[cobalt] network error:', err);
+    throw new DownloadError('Download service unreachable', 'generic');
   }
 
-  const rawText = await res.text();
-  console.log('[downloader-api] status:', res.status, 'body:', rawText.slice(0, 300));
+  const body = await res.text();
+  console.log('[cobalt] http', res.status, body.slice(0, 200));
 
   if (!res.ok) {
-    throw new DownloadError(`cobalt API HTTP ${res.status}: ${rawText}`, 'generic');
+    throw new DownloadError(`cobalt HTTP ${res.status}`, 'generic');
   }
 
   let data: CobaltResponse;
   try {
-    data = JSON.parse(rawText) as CobaltResponse;
+    data = JSON.parse(body) as CobaltResponse;
   } catch {
-    throw new DownloadError(`cobalt bad JSON: ${rawText.slice(0, 100)}`, 'generic');
+    throw new DownloadError('cobalt returned invalid JSON', 'generic');
   }
 
   if (data.status === 'error') {
     const code = data.error?.code ?? 'unknown';
-    console.error('[downloader-api] cobalt error:', code);
+    console.error('[cobalt] error code:', code);
     if (code.includes('content.too_long') || code.includes('content.size')) {
       throw new DownloadError('File too large', 'too_large');
     }
     throw new DownloadError(`cobalt: ${code}`, 'generic');
   }
 
-  // Instagram carousel / multi-picker
-  if (data.status === 'picker' && data.picker?.length) {
-    const item = data.picker.find((p) => p.type === 'video') ?? data.picker[0];
-    console.log('[downloader-api] picker item:', item.url.slice(0, 80));
-    return { kind: 'remote', url: item.url, filename: data.filename, mediaType: 'video' };
+  // Instagram carousel / multi-item picker
+  if (data.status === 'picker') {
+    const video = data.picker?.find((p) => p.type === 'video') ?? data.picker?.[0];
+    if (!video?.url) throw new DownloadError('picker had no URL', 'generic');
+    console.log('[cobalt] picker url:', video.url.slice(0, 80));
+    return { kind: 'remote', url: video.url, filename: data.filename, mediaType: 'video' };
   }
 
   if (!data.url) {
-    throw new DownloadError(`cobalt returned no url. status=${data.status}`, 'generic');
+    throw new DownloadError(`cobalt no url (status=${data.status})`, 'generic');
   }
 
-  const ext = (data.filename ?? '').split('.').pop()?.toLowerCase() ?? '';
-  const mediaType: DownloadResultRemote['mediaType'] =
-    ['mp3', 'ogg', 'm4a', 'aac'].includes(ext) ? 'audio'
-    : ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? 'photo'
-    : 'video';
-
-  console.log('[downloader-api] success:', data.status, data.url.slice(0, 80));
+  const mediaType = guessMediaType(data.filename, data.url);
+  console.log('[cobalt] ✓', data.status, mediaType, data.url.slice(0, 80));
   return { kind: 'remote', url: data.url, filename: data.filename, mediaType };
 }

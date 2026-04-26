@@ -1,11 +1,66 @@
 import type { Bot, Context } from 'grammy';
 import { InputFile } from 'grammy';
-import type { DbAdapter, DownloaderFn } from '../types.ts';
+import type { DbAdapter, DownloaderFn, DownloadResultRemote } from '../types.ts';
 import { DownloadError } from '../types.ts';
 import { t } from '../i18n/index.ts';
 import type { Language } from '../types.ts';
 import { isSupported } from '../utils/url.ts';
 import { getCached, setCache } from '../services/cache.ts';
+
+// Fetch remote media and wrap as InputFile for Telegram upload
+async function proxyToInputFile(result: DownloadResultRemote): Promise<InputFile> {
+  console.log('[proxy] fetching:', result.url.slice(0, 80));
+  const res = await fetch(result.url, {
+    headers: { 'User-Agent': 'TelegramBot/1.0' },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new DownloadError(`proxy fetch ${res.status}`, 'generic');
+  const buf = await res.arrayBuffer();
+  const ext =
+    result.mediaType === 'video' ? 'mp4'
+    : result.mediaType === 'photo' ? 'jpg'
+    : 'mp3';
+  const filename = result.filename ?? `media.${ext}`;
+  console.log('[proxy] got', buf.byteLength, 'bytes as', filename);
+  return new InputFile(new Uint8Array(buf), filename);
+}
+
+// Send one piece of media — try URL first, fall back to proxy blob
+async function sendRemote(ctx: Context, result: DownloadResultRemote): Promise<string> {
+  const tryUrl = async () => {
+    if (result.mediaType === 'video') {
+      const msg = await ctx.replyWithVideo(result.url);
+      return msg.video.file_id;
+    } else if (result.mediaType === 'photo') {
+      const msg = await ctx.replyWithPhoto(result.url);
+      return msg.photo.at(-1)!.file_id;
+    } else {
+      const msg = await ctx.replyWithAudio(result.url);
+      return msg.audio.file_id;
+    }
+  };
+
+  const tryProxy = async () => {
+    const file = await proxyToInputFile(result);
+    if (result.mediaType === 'video') {
+      const msg = await ctx.replyWithVideo(file);
+      return msg.video.file_id;
+    } else if (result.mediaType === 'photo') {
+      const msg = await ctx.replyWithPhoto(file);
+      return msg.photo.at(-1)!.file_id;
+    } else {
+      const msg = await ctx.replyWithAudio(file);
+      return msg.audio.file_id;
+    }
+  };
+
+  try {
+    return await tryUrl();
+  } catch (urlErr) {
+    console.warn('[media] direct URL failed, proxying:', urlErr);
+    return await tryProxy();
+  }
+}
 
 export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, downloader: DownloaderFn): void {
   bot.on('message:text', async (ctx) => {
@@ -21,9 +76,10 @@ export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, download
       return;
     }
 
-    // Serve from cache when possible
+    // Serve from cache when available
     const cached = await getCached(db, text);
     if (cached) {
+      console.log('[media] cache hit:', text.slice(0, 60));
       if (cached.mediaType === 'video') await ctx.replyWithVideo(cached.fileId);
       else if (cached.mediaType === 'photo') await ctx.replyWithPhoto(cached.fileId);
       else await ctx.replyWithAudio(cached.fileId);
@@ -31,42 +87,37 @@ export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, download
     }
 
     const statusMsg = await ctx.reply(t(lang, 'downloading'));
+    let sentFileId: string | null = null;
 
     try {
       const result = await downloader(text);
-      let sentFileId: string;
 
       if (result.kind === 'local') {
-        // VPS: upload file to Telegram, then clean up
+        // VPS path — upload file from disk
+        let fileId: string;
         if (result.mediaType === 'video') {
+          const { rmSync } = await import('node:fs');
           const msg = await ctx.replyWithVideo(new InputFile(result.filePath));
-          sentFileId = msg.video.file_id;
+          fileId = msg.video.file_id;
+          try { rmSync(result.sessionDir, { recursive: true, force: true }); } catch { /* ok */ }
         } else if (result.mediaType === 'photo') {
           const msg = await ctx.replyWithPhoto(new InputFile(result.filePath));
-          sentFileId = msg.photo.at(-1)!.file_id;
+          fileId = msg.photo.at(-1)!.file_id;
         } else {
           const msg = await ctx.replyWithAudio(new InputFile(result.filePath));
-          sentFileId = msg.audio.file_id;
+          fileId = msg.audio.file_id;
         }
-        // Lazy import so node:fs is never bundled into the Worker
-        const { rmSync } = await import('node:fs');
-        try { rmSync(result.sessionDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+        sentFileId = fileId;
       } else {
-        // Workers: pass remote URL directly to Telegram
-        if (result.mediaType === 'video') {
-          const msg = await ctx.replyWithVideo(result.url);
-          sentFileId = msg.video.file_id;
-        } else if (result.mediaType === 'photo') {
-          const msg = await ctx.replyWithPhoto(result.url);
-          sentFileId = msg.photo.at(-1)!.file_id;
-        } else {
-          const msg = await ctx.replyWithAudio(result.url);
-          sentFileId = msg.audio.file_id;
-        }
+        // Workers path — URL or proxied blob
+        sentFileId = await sendRemote(ctx, result);
       }
 
-      await setCache(db, text, sentFileId, result.mediaType);
+      if (sentFileId) {
+        await setCache(db, text, sentFileId, result.mediaType);
+      }
     } catch (err) {
+      console.error('[media] error:', err);
       const key =
         err instanceof DownloadError
           ? err.kind === 'unsupported' ? 'unsupported'
@@ -75,7 +126,7 @@ export function registerMediaHandlers(bot: Bot<Context>, db: DbAdapter, download
           : 'error';
       await ctx.reply(t(lang, key));
     } finally {
-      try { await ctx.api.deleteMessage(chatId, statusMsg.message_id); } catch { /* best-effort */ }
+      try { await ctx.api.deleteMessage(chatId, statusMsg.message_id); } catch { /* ok */ }
     }
   });
 }
