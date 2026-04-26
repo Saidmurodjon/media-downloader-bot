@@ -2,6 +2,7 @@ name = "media-downloader-bot"
 main = "src/worker.ts"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "e9928dade1387a975ceeea440a1c0e80"
 
 [vars]
 ADMIN_IDS = "693732696"
