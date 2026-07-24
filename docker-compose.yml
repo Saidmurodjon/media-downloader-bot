@@ -1,19 +1,6 @@
 version: "3.8"
 
 services:
-  cobalt-api:
-    image: ghcr.io/imputnet/cobalt:10
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-    environment:
-      API_URL: "http://localhost:9000"
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges
-
   # Optional but recommended: raises Telegram's upload limit from 50MB to 2000MB.
   # Requires TELEGRAM_API_ID / TELEGRAM_API_HASH from https://my.telegram.org
   telegram-bot-api:

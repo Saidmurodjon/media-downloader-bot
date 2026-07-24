@@ -5,7 +5,15 @@
     "er": "Qayerdadir hatolik bor 😔\n Iltimos qayta urinib ko'ring!",
     "wrong": "Nimadir hato ketti iltimos qayta urinib ko'ring!",
     "abaut": "Salom men sizga Instagram va Tiktokdan videolarni yuklab olishda yordam beraman.",
-    "processing": "⏳ Video yuklanmoqda, biroz kuting..."
+    "processing": "⏳ Video yuklanmoqda, biroz kuting...",
+    "err_unavailable": "Bu videoni yuklab bo'lmadi 😕\nHavola noto'g'ri, video yopiq yoki platforma tomonidan cheklangan bo'lishi mumkin. Boshqa havola bilan urinib ko'ring.",
+    "err_timeout": "Server band, javob kutish vaqti tugadi ⏳\nBiroz kutib, qayta urinib ko'ring.",
+    "err_toolarge": "Video hajmi juda katta 📦\nKichikroq video bilan urinib ko'ring.",
+    "subscribe_required": "Botdan foydalanish uchun quyidagi kanalga a'zo bo'ling 👇",
+    "subscribe_check": "✅ A'zo bo'ldim",
+    "subscribe_still_no": "Siz hali kanalga a'zo bo'lmagansiz.",
+    "subscribe_success": "✅ Rahmat! Endi video havolasini yuborishingiz mumkin.",
+    "choose_format": "Qaysi shaklda kerak?"
   },
   "ru": {
     "start": "Приветствую! Введите ссылку на ролик:",
@@ -13,7 +21,15 @@
     "er": "Что-то пошло не так 😔\n Пожалуйста, попробуйте ещё раз!",
     "wrong": "Что-то пошло не так. Пожалуйста, попытайтесь еще раз!",
     "abaut": "Здравствуйте, я помогу вам скачать видео из Instagram и Tiktok.",
-    "processing": "⏳ Видео загружается, подождите немного..."
+    "processing": "⏳ Видео загружается, подождите немного...",
+    "err_unavailable": "Это видео не удалось скачать 😕\nВозможно, ссылка неверна, видео закрыто или ограничено платформой. Попробуйте другую ссылку.",
+    "err_timeout": "Сервер занят, время ожидания истекло ⏳\nПопробуйте ещё раз через некоторое время.",
+    "err_toolarge": "Видео слишком большое 📦\nПопробуйте видео поменьше.",
+    "subscribe_required": "Чтобы пользоваться ботом, подпишитесь на канал 👇",
+    "subscribe_check": "✅ Я подписался",
+    "subscribe_still_no": "Вы ещё не подписались на канал.",
+    "subscribe_success": "✅ Спасибо! Теперь вы можете отправить ссылку на видео.",
+    "choose_format": "В каком формате вам нужно?"
   },
   "in": {
     "start": "Hey! Send me a link:",
@@ -21,6 +37,14 @@
     "er": "Something went wrong 😔\n Please try again!",
     "wrong": "Something went wrong, please try again!",
     "abaut": "Hello, I can help you to download videos from Instagram and Tiktok.",
-    "processing": "⏳ Video is downloading, please wait..."
+    "processing": "⏳ Video is downloading, please wait...",
+    "err_unavailable": "This video couldn't be downloaded 😕\nThe link may be invalid, private, or restricted by the platform. Try a different link.",
+    "err_timeout": "Server is busy, the request timed out ⏳\nPlease try again in a bit.",
+    "err_toolarge": "The video is too large 📦\nTry a smaller video.",
+    "subscribe_required": "To use this bot, please join the channel below 👇",
+    "subscribe_check": "✅ I've joined",
+    "subscribe_still_no": "You haven't joined the channel yet.",
+    "subscribe_success": "✅ Thanks! You can now send a video link.",
+    "choose_format": "Which format would you like?"
   }
 }
