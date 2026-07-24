@@ -41,11 +41,21 @@ function errorKey(err) {
 
 boss.on("error", (err) => console.error("pg-boss error", err));
 
+// pg-boss defaults to teamSize/teamConcurrency of 1 — one job at a time,
+// globally. Without this, a second user's download just waits behind the
+// first user's, even though downloads are network-bound (not CPU-bound) and
+// have plenty of room to run side by side.
+const DOWNLOAD_CONCURRENCY = 3;
+
 async function start(bot) {
   await boss.start();
-  await boss.work(QUEUE_NAME, async (job) => {
-    await processJob(bot, job.data);
-  });
+  await boss.work(
+    QUEUE_NAME,
+    { teamSize: DOWNLOAD_CONCURRENCY, teamConcurrency: DOWNLOAD_CONCURRENCY },
+    async (job) => {
+      await processJob(bot, job.data);
+    }
+  );
   await boss.work(BROADCAST_QUEUE_NAME, async (job) => {
     await sendBroadcast(bot, job.data);
   });
