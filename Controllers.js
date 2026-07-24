@@ -1,120 +1,79 @@
-const {  Tiktok, Youtube } = require("./Downloader");
 const Functions = require("./functions/Functions");
 const UserModel = require("./user/UserModel");
+const VideoCache = require("./db/VideoCache");
+const Queue = require("./queue");
 const texts = require("./text.json");
+
+function t(lang, key) {
+  return (texts[lang] && texts[lang][key]) || texts.in[key];
+}
+
+function detectPlatform(text) {
+  if (/(youtube\.com|youtu\.be)/i.test(text)) return "youtube";
+  if (/instagram\.com/i.test(text)) return "instagram";
+  if (/tiktok\.com/i.test(text)) return "tiktok";
+  return null;
+}
+
 module.exports = class Controllers {
   static async MessageController(ctx, bot) {
     const chat_id = ctx.message.chat.id;
-    const user = await UserModel.findOne({
-      chatId: chat_id,
-    });
-    // const user = await BotUserModel.findOne({ chatID: chat_id });
-    // console.log(ctx.message);
+    const user = await UserModel.findOne(chat_id);
     const text = ctx.message.text;
+
     if (text == "/start") {
       if (!user) {
         await Functions.StartUser(ctx);
       } else if (user.language.length <= 0) {
         await Functions.Languages(ctx);
       } else {
-        await ctx.telegram.sendMessage(
-          chat_id,
-          user.language == "uz"
-            ? texts.uz.start
-            : user.language == "ru"
-            ? texts.ru.start
-            : user.language == "in"
-            ? texts.in.start
-            : null
-        );
+        await ctx.telegram.sendMessage(chat_id, t(user.language, "start"));
       }
-    } else if (text === "/language") {
+      return;
+    }
+
+    if (text === "/language") {
       await Functions.Languages(ctx);
-    } 
-    else if (text.includes("instagram")) {
-      try {
-        //
-        await ctx.replyWithChatAction("typing");
-        // const ins = await Instagrams(ctx.message.text);
-        // console.log(ins);
+      return;
+    }
 
-        if (false) {
-          await ctx.telegram.sendVideo(chat_id, ins.videoUrl, {
-            caption: ins.caption,
-          });
-        } else {
-          ctx.telegram.sendMessage(
-            chat_id,
-            user.language == "uz"
-              ? texts.uz.er
-              : user.language == "ru"
-              ? texts.ru.er
-              : user.language == "in"
-              ? texts.in.er
-              : null
-          );
-        }
-      } catch (err) {
-        console.log(err);
-      }
-    } 
-    else if (text.includes("tiktok")) {
-      try {
-        // console.log(ctx.message);
-        await ctx.replyWithChatAction("typing");
-        const tik = await Tiktok(ctx.message.text);
-        console.log(tik);
-        tik.videoUrl
-          ? await ctx.telegram.sendVideo(chat_id, tik.videoUrl, {
-              caption: tik.caption,
-            })
-          : ctx.telegram.sendMessage(
-              chat_id,
-              user.language == "uz"
-                ? texts.uz.er
-                : user.language == "ru"
-                ? texts.ru.er
-                : user.language == "in"
-                ? texts.in.er
-                : null
-            );
-      } catch (err) {
-        console.log(err);
-      }
-    } else if (text === "/about") {
+    if (text === "/about") {
       await ctx.replyWithChatAction("typing");
+      await ctx.telegram.sendMessage(chat_id, t(user.language, "abaut"));
+      return;
+    }
 
-      await ctx.telegram.sendMessage(
-        chat_id,
-        user.language == "uz"
-          ? texts.uz.abaut
-          : user.language == "ru"
-          ? texts.ru.abaut
-          : user.language == "in"
-          ? texts.in.abaut
-          : null
-      );
-    } else {
-      ctx.telegram.sendMessage(
-        chat_id,
-        user.language == "uz"
-          ? texts.uz.wrong
-          : user.language == "ru"
-          ? texts.ru.wrong
-          : user.language == "in"
-          ? texts.in.wrong
-          : null
-      );
+    const platform = detectPlatform(text);
+    if (!platform) {
+      await ctx.telegram.sendMessage(chat_id, t(user.language, "wrong"));
+      return;
+    }
+
+    try {
+      const cached = await VideoCache.get(text);
+      if (cached) {
+        await ctx.telegram.sendVideo(chat_id, cached.file_id);
+        return;
+      }
+
+      await ctx.replyWithChatAction("upload_video");
+      const status = await ctx.reply(t(user.language, "processing"));
+      await Queue.enqueue({
+        chatId: chat_id,
+        url: text,
+        platform,
+        statusMessageId: status.message_id,
+      });
+    } catch (err) {
+      console.error(err);
+      await ctx.telegram.sendMessage(chat_id, t(user.language, "er"));
     }
   }
-  // Inline controller
+
   static async InlineController(ctx) {
     const up = ctx.update.callback_query;
-    const user = await UserModel.findOne({
-      chatId: up.from.id,
-    });
-    // console.log(ctx.update.callback_query.data);
-    if ((up.data === "uz" || "ru" || "in") && user.step >= 1) {
+    const user = await UserModel.findOne(up.from.id);
+    if ((up.data === "uz" || up.data === "ru" || up.data === "in") && user.step >= 1) {
       await Functions.ChooseLanguage(ctx);
     }
   }

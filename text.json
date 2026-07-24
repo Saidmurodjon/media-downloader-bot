@@ -4,20 +4,23 @@
     "lan": "🇺🇿 O'zbek",
     "er": "Qayerdadir hatolik bor 😔\n Iltimos qayta urinib ko'ring!",
     "wrong": "Nimadir hato ketti iltimos qayta urinib ko'ring!",
-    "abaut": "Salom men sizga Instagram va Tiktokdan videolarni yuklab olishda yordam beraman."
+    "abaut": "Salom men sizga Instagram va Tiktokdan videolarni yuklab olishda yordam beraman.",
+    "processing": "⏳ Video yuklanmoqda, biroz kuting..."
   },
   "ru": {
     "start": "Приветствую! Введите ссылку на ролик:",
     "lan": "🇷🇺 Русский",
     "er": "Что-то пошло не так 😔\n Пожалуйста, попробуйте ещё раз!",
     "wrong": "Что-то пошло не так. Пожалуйста, попытайтесь еще раз!",
-    "abaut": "Здравствуйте, я помогу вам скачать видео из Instagram и Tiktok."
+    "abaut": "Здравствуйте, я помогу вам скачать видео из Instagram и Tiktok.",
+    "processing": "⏳ Видео загружается, подождите немного..."
   },
   "in": {
     "start": "Hey! Send me a link:",
     "lan": "🇺🇸 English",
     "er": "Something went wrong 😔\n Please try again!",
     "wrong": "Something went wrong, please try again!",
-    "abaut": "Hello, I can help you to download videos from Instagram and Tiktok."
+    "abaut": "Hello, I can help you to download videos from Instagram and Tiktok.",
+    "processing": "⏳ Video is downloading, please wait..."
   }
 }

@@ -29,7 +29,6 @@ module.exports = class Functions {
         chatId: ctx.message.chat.id,
         step: 1,
         language: "",
-        date: new Date(),
       };
       await UserModel.create(user);
 
@@ -52,37 +51,30 @@ module.exports = class Functions {
   // Contact saqlash
   static async ChooseLanguage(ctx) {
     const up = ctx.update.callback_query;
-    const user = await UserModel.findOne({
-      chatId: up.message.chat.id,
-    });
-    const lan = {
-      language: "",
-      step: 2,
-    };
-    var text = "";
+    let language = "";
+    let text = "";
+    switch (up.data) {
+      case "uz":
+        language = "uz";
+        text = "URL yuborishingiz mumkin.";
+        break;
+      case "ru":
+        language = "ru";
+        text = "Вы можете отправить URL.";
+        break;
+      case "in":
+        language = "in";
+        text = "You can send a URL.";
+        break;
+      default:
+        return;
+    }
     try {
-      switch (up.data) {
-        case "uz":
-          lan.language = "uz";
-          text = "URL yuborishingiz mumkin.";
-          break;
-        case "ru":
-          lan.language = "ru";
-          text = "Вы можете отправить URL.";
-          break;
-        case "in":
-          lan.language = "in";
-          text = "You can send a URL.";
-          break;
-        default:
-          console.log(`Sorry, we are out of.`);
-      }
-      await UserModel.findByIdAndUpdate(user._id, lan);
+      await UserModel.updateLanguage(up.message.chat.id, language, 2);
       await ctx.editMessageText(text, {
         chat_id: up.message.chat.id,
         message_id: up.message.message_id,
       });
-      console.log(up.message);
     } catch (err) {
       console.log(err);
     }
