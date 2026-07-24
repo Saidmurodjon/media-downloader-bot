@@ -75,6 +75,17 @@ async function initSchema() {
       value TEXT
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS broadcasts (
+      id SERIAL PRIMARY KEY,
+      admin_chat_id BIGINT NOT NULL,
+      content JSONB NOT NULL,
+      button JSONB,
+      sent_count INTEGER,
+      failed_count INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 }
 
 module.exports = { pool, initSchema };

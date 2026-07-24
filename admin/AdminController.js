@@ -1,5 +1,6 @@
 const AdminModel = require("./AdminModel");
 const ChannelModel = require("./ChannelModel");
+const BroadcastModel = require("./BroadcastModel");
 const DownloadLog = require("../db/DownloadLog");
 const MediaMessage = require("../functions/MediaMessage");
 const Queue = require("../queue");
@@ -9,11 +10,18 @@ const Queue = require("../queue");
 // single-admin-at-a-time, so an in-memory map is enough — no DB session needed.
 const pendingAction = new Map();
 
+// See finalizeBufferedContent below for why broadcast content is buffered
+// instead of taken from a single incoming message.
+const contentBuffers = new Map();
+const CONTENT_DEBOUNCE_MS = 1200;
+
 const MENU_TEXT = "🛠 Admin panel";
 const MENU_KEYBOARD = {
   inline_keyboard: [
     [{ text: "📊 Statistika", callback_data: "admin_stats" }],
     [{ text: "📢 Reklama yuborish", callback_data: "admin_broadcast" }],
+    [{ text: "🔁 Oxirgi reklamani qayta yuborish", callback_data: "admin_bcast_resend" }],
+    [{ text: "📊 Reklama tarixi", callback_data: "admin_bcast_history" }],
     [{ text: "👥 Adminlar ro'yxati", callback_data: "admin_list" }],
     [
       { text: "➕ Admin qo'shish", callback_data: "admin_addadmin" },
@@ -26,6 +34,64 @@ const MENU_KEYBOARD = {
 const BACK_KEYBOARD = {
   inline_keyboard: [[{ text: "🔙 Menyu", callback_data: "admin_menu" }]],
 };
+
+// A post whose original caption is too long for Telegram's 1024-char photo/
+// video caption limit gets delivered to the bot as two separate messages
+// (media, then a plain-text follow-up) instead of one photo+caption message.
+// Buffering everything that arrives within a short debounce window and
+// merging it recovers that as a single broadcast unit — otherwise the
+// follow-up text (often the actual body of the post) is silently dropped.
+function finalizeBufferedContent(buf) {
+  const trailingCaption = buf.text
+    ? { caption: buf.text, caption_entities: buf.textEntities }
+    : null;
+
+  if (buf.photos.length > 1) {
+    const items = buf.photos.map((p, i) =>
+      i === 0 && !p.caption && trailingCaption ? { ...p, ...trailingCaption } : p
+    );
+    return { type: "album", items };
+  }
+  if (buf.photos.length === 1) {
+    const p = buf.photos[0];
+    return {
+      type: "photo",
+      file_id: p.file_id,
+      caption: p.caption || trailingCaption?.caption,
+      caption_entities: p.caption_entities || trailingCaption?.caption_entities,
+    };
+  }
+  if (buf.video) {
+    return {
+      type: "video",
+      file_id: buf.video.file_id,
+      caption: buf.video.caption || trailingCaption?.caption,
+      caption_entities: buf.video.caption_entities || trailingCaption?.caption_entities,
+    };
+  }
+  return { type: "text", text: buf.text || "", entities: buf.textEntities };
+}
+
+function previewLine(content) {
+  if (content.type === "album") return `[Albom, ${content.items.length} ta rasm]`;
+  if (content.type === "photo") return `[Rasm]${content.caption ? " " + content.caption : ""}`;
+  if (content.type === "video") return `[Video]${content.caption ? " " + content.caption : ""}`;
+  return content.text;
+}
+
+function formatBroadcastHistory(history) {
+  if (!history.length) return "📊 Reklama tarixi\n\nHali hech narsa yuborilmagan.";
+  const lines = history.map((b) => {
+    const date = new Date(b.created_at).toLocaleString("uz-UZ", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+    const preview = previewLine(b.content).slice(0, 40);
+    const result = b.sent_count == null ? "yuborilmoqda..." : `✅ ${b.sent_count} / ❌ ${b.failed_count}`;
+    return `${date} — ${preview}\n  ${result}`;
+  });
+  return `📊 Reklama tarixi (oxirgi ${history.length})\n\n${lines.join("\n\n")}`;
+}
 
 function formatStats({ totalUsers, totalDownloads, cachedDownloads, byPlatform }) {
   const cacheRate = totalDownloads
@@ -115,9 +181,44 @@ module.exports = class AdminController {
         await ctx.answerCbQuery();
         pendingAction.set(chatId, { type: "broadcast", state: "awaiting_content" });
         return ctx.editMessageText(
-          "Reklama xabarini yuboring (matn, rasm yoki video).",
+          "Reklama xabarini yuboring: matn, rasm, video, yoki bir nechta rasm (albom sifatida).",
           { reply_markup: BACK_KEYBOARD }
         );
+      }
+
+      case "admin_bcast_resend": {
+        await ctx.answerCbQuery();
+        const latest = await BroadcastModel.getLatest();
+        if (!latest) {
+          return ctx.editMessageText("Hali hech qanday reklama yuborilmagan.", {
+            reply_markup: BACK_KEYBOARD,
+          });
+        }
+        return AdminController.showBroadcastConfirm(ctx, chatId, latest.content, latest.button);
+      }
+
+      case "admin_bcast_history": {
+        await ctx.answerCbQuery();
+        const history = await BroadcastModel.history(5);
+        return ctx.editMessageText(formatBroadcastHistory(history), { reply_markup: BACK_KEYBOARD });
+      }
+
+      case "admin_bcast_btn_yes": {
+        const pending = pendingAction.get(chatId);
+        if (!pending || pending.type !== "broadcast") return ctx.answerCbQuery();
+        pendingAction.set(chatId, { ...pending, state: "awaiting_button_text" });
+        await ctx.answerCbQuery();
+        return ctx.editMessageText(
+          "Tugma matni va havolasini shu formatda yuboring:\n`Matn | https://havola`",
+          { parse_mode: "Markdown", reply_markup: BACK_KEYBOARD }
+        );
+      }
+
+      case "admin_bcast_btn_no": {
+        const pending = pendingAction.get(chatId);
+        if (!pending || pending.type !== "broadcast") return ctx.answerCbQuery();
+        await ctx.answerCbQuery();
+        return AdminController.showBroadcastConfirm(ctx, chatId, pending.content, null);
       }
 
       case "admin_addadmin": {
@@ -185,7 +286,10 @@ module.exports = class AdminController {
     if (!pending) return;
 
     if (pending.type === "broadcast" && pending.state === "awaiting_content") {
-      return AdminController.receiveBroadcastContent(ctx, chatId);
+      return AdminController.bufferContent(ctx, chatId);
+    }
+    if (pending.type === "broadcast" && pending.state === "awaiting_button_text") {
+      return AdminController.applyBroadcastButton(ctx, chatId, pending.content);
     }
     if (pending.type === "addadmin") {
       pendingAction.delete(chatId);
@@ -339,24 +443,81 @@ module.exports = class AdminController {
     await ctx.reply(message, { reply_markup: BACK_KEYBOARD });
   }
 
-  static async receiveBroadcastContent(ctx, chatId) {
-    const targetCount = (await AdminModel.allChatIds()).length;
-    pendingAction.set(chatId, {
-      type: "broadcast",
-      state: "awaiting_confirm",
-      messageId: ctx.message.message_id,
-    });
+  static bufferContent(ctx, chatId) {
+    let buf = contentBuffers.get(chatId);
+    if (!buf) {
+      buf = { photos: [], video: null, text: null, textEntities: null };
+      contentBuffers.set(chatId, buf);
+    }
 
-    await ctx.reply(`Ushbu xabar ${targetCount} ta foydalanuvchiga yuborilsinmi?`, {
+    if (ctx.message.photo) {
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      buf.photos.push({
+        file_id: photo.file_id,
+        caption: ctx.message.caption,
+        caption_entities: ctx.message.caption_entities,
+      });
+    } else if (ctx.message.video) {
+      buf.video = {
+        file_id: ctx.message.video.file_id,
+        caption: ctx.message.caption,
+        caption_entities: ctx.message.caption_entities,
+      };
+    } else if (ctx.message.text) {
+      buf.text = ctx.message.text;
+      buf.textEntities = ctx.message.entities;
+    }
+
+    clearTimeout(buf.timer);
+    buf.timer = setTimeout(() => {
+      contentBuffers.delete(chatId);
+      AdminController.receiveBroadcastContent(ctx, chatId, finalizeBufferedContent(buf));
+    }, CONTENT_DEBOUNCE_MS);
+  }
+
+  static async receiveBroadcastContent(ctx, chatId, content) {
+    pendingAction.set(chatId, { type: "broadcast", state: "awaiting_button_choice", content });
+    await ctx.reply("🔗 Ushbu reklamaga tugma (masalan, havola) qo'shmoqchimisiz?", {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Yuborish", callback_data: "broadcast_confirm" },
-            { text: "❌ Bekor qilish", callback_data: "broadcast_cancel" },
+            { text: "✅ Ha", callback_data: "admin_bcast_btn_yes" },
+            { text: "❌ Yo'q", callback_data: "admin_bcast_btn_no" },
           ],
         ],
       },
     });
+  }
+
+  static async applyBroadcastButton(ctx, chatId, content) {
+    const raw = ctx.message.text || "";
+    const [textPart, urlPart] = raw.split("|").map((s) => s && s.trim());
+    if (!textPart || !urlPart || !/^https?:\/\//i.test(urlPart)) {
+      return ctx.reply("Noto'g'ri format. Iltimos shunday yuboring:\n`Matn | https://havola`", {
+        parse_mode: "Markdown",
+      });
+    }
+    return AdminController.showBroadcastConfirm(ctx, chatId, content, { text: textPart, url: urlPart });
+  }
+
+  static async showBroadcastConfirm(ctx, chatId, content, button) {
+    const targetCount = (await AdminModel.allChatIds()).length;
+    pendingAction.set(chatId, { type: "broadcast", state: "awaiting_confirm", content, button });
+
+    const buttonLine = button ? `\n\n🔗 Tugma: ${button.text} → ${button.url}` : "";
+    await ctx.reply(
+      `Quyidagi reklama ${targetCount} ta foydalanuvchiga yuborilsinmi?\n\n${previewLine(content)}${buttonLine}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "✅ Yuborish", callback_data: "broadcast_confirm" },
+              { text: "❌ Bekor qilish", callback_data: "broadcast_cancel" },
+            ],
+          ],
+        },
+      }
+    );
   }
 
   static async HandleBroadcastConfirm(ctx) {
@@ -376,10 +537,13 @@ module.exports = class AdminController {
 
     await ctx.answerCbQuery("Yuborilmoqda...");
     await ctx.editMessageText("⏳ Reklama yuborilmoqda...");
+
+    const broadcastId = await BroadcastModel.create(chatId, pending.content, pending.button);
     await Queue.enqueueBroadcast({
+      broadcastId,
       adminChatId: chatId,
-      fromChatId: chatId,
-      messageId: pending.messageId,
+      content: pending.content,
+      button: pending.button,
     });
   }
 };
