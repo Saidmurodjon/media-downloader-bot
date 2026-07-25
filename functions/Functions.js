@@ -2,9 +2,7 @@ const UserModel = require("../user/UserModel");
 const InlineKeyboards = require("../keyboards/InlineKeyboards");
 
 module.exports = class Functions {
-  // User saqlash
   static async Languages(ctx) {
-    // console.log(ctx.message.text);
     try {
       await ctx.telegram.sendMessage(
         ctx.message.chat.id,
@@ -22,7 +20,6 @@ module.exports = class Functions {
     }
   }
   static async StartUser(ctx) {
-    // console.log(ctx.message.text);
     try {
       const user = {
         userName: ctx.message.chat.username,
@@ -48,7 +45,6 @@ module.exports = class Functions {
     }
   }
 
-  // Contact saqlash
   static async ChooseLanguage(ctx) {
     const up = ctx.update.callback_query;
     let language = "";
