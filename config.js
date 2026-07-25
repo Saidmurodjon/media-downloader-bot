@@ -14,4 +14,6 @@ module.exports = {
   // Windows STATUS_DLL_INIT_FAILED crashes at 3), so keep this conservative
   // locally; a VPS can raise it via the env var.
   DOWNLOAD_CONCURRENCY: Number(env.DOWNLOAD_CONCURRENCY) || 2,
+  NGROK_BIN: env.NGROK_BIN || "ngrok",
+  NGROK_AUTHTOKEN: env.NGROK_AUTHTOKEN || "",
 };

@@ -1,10 +1,10 @@
 {
   "uz": {
-    "start": "Salom! Menga link yuboring:",
+    "start": "Salom! 👋 Men YouTube, Instagram va TikTok'dan video/audio yuklab beraman.\n\nShunchaki havolani yuboring.",
     "lan": "🇺🇿 O'zbek",
     "er": "Qayerdadir hatolik bor 😔\n Iltimos qayta urinib ko'ring!",
     "wrong": "Nimadir hato ketti iltimos qayta urinib ko'ring!",
-    "abaut": "Salom men sizga Instagram va Tiktokdan videolarni yuklab olishda yordam beraman.",
+    "abaut": "🎬 Men YouTube, Instagram va TikTok'dan video yoki audio (mp3) formatida yuklab beraman.\n\nHavolani yuboring, keyin video yoki audio shaklini tanlang.",
     "processing": "⏳ Video yuklanmoqda, biroz kuting...",
     "err_unavailable": "Bu videoni yuklab bo'lmadi 😕\nHavola noto'g'ri, video yopiq yoki platforma tomonidan cheklangan bo'lishi mumkin. Boshqa havola bilan urinib ko'ring.",
     "err_timeout": "Server band, javob kutish vaqti tugadi ⏳\nBiroz kutib, qayta urinib ko'ring.",
@@ -16,11 +16,11 @@
     "choose_format": "Qaysi shaklda kerak?"
   },
   "ru": {
-    "start": "Приветствую! Введите ссылку на ролик:",
+    "start": "Привет! 👋 Я скачиваю видео/аудио с YouTube, Instagram и TikTok.\n\nПросто отправьте ссылку.",
     "lan": "🇷🇺 Русский",
     "er": "Что-то пошло не так 😔\n Пожалуйста, попробуйте ещё раз!",
     "wrong": "Что-то пошло не так. Пожалуйста, попытайтесь еще раз!",
-    "abaut": "Здравствуйте, я помогу вам скачать видео из Instagram и Tiktok.",
+    "abaut": "🎬 Я скачиваю видео или аудио (mp3) с YouTube, Instagram и TikTok.\n\nОтправьте ссылку и выберите формат — видео или аудио.",
     "processing": "⏳ Видео загружается, подождите немного...",
     "err_unavailable": "Это видео не удалось скачать 😕\nВозможно, ссылка неверна, видео закрыто или ограничено платформой. Попробуйте другую ссылку.",
     "err_timeout": "Сервер занят, время ожидания истекло ⏳\nПопробуйте ещё раз через некоторое время.",
@@ -32,11 +32,11 @@
     "choose_format": "В каком формате вам нужно?"
   },
   "in": {
-    "start": "Hey! Send me a link:",
+    "start": "Hi! 👋 I download video/audio from YouTube, Instagram and TikTok.\n\nJust send me a link.",
     "lan": "🇺🇸 English",
     "er": "Something went wrong 😔\n Please try again!",
     "wrong": "Something went wrong, please try again!",
-    "abaut": "Hello, I can help you to download videos from Instagram and Tiktok.",
+    "abaut": "🎬 I download video or audio (mp3) from YouTube, Instagram and TikTok.\n\nSend a link, then choose video or audio format.",
     "processing": "⏳ Video is downloading, please wait...",
     "err_unavailable": "This video couldn't be downloaded 😕\nThe link may be invalid, private, or restricted by the platform. Try a different link.",
     "err_timeout": "Server is busy, the request timed out ⏳\nPlease try again in a bit.",

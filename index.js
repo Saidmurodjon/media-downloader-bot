@@ -7,6 +7,8 @@ const AdminModel = require("./admin/AdminModel");
 const AdminController = require("./admin/AdminController");
 const { handleChatMemberUpdate } = require("./functions/ChannelMemberHandler");
 const BotInfo = require("./functions/BotInfo");
+const BotDescription = require("./functions/BotDescription");
+const ConnectionManager = require("./functions/ConnectionManager");
 const express = require("express");
 const app = express();
 
@@ -23,13 +25,10 @@ bot.telegram.setMyCommands([
   { command: "/language", description: "choose language" },
 ]);
 
-const usePolling = !BaseURL;
-
-if (!usePolling) {
-  app.use(bot.webhookCallback("/"));
-  bot.telegram.setWebhook(BaseURL, { allowed_updates: ALLOWED_UPDATES });
-}
-
+// Express always runs, whether the active delivery mode is webhook or
+// polling — GET requests fall through webhookCallback untouched (it only
+// intercepts POST), so the health check route below still works either way.
+app.use(bot.webhookCallback("/"));
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
@@ -64,21 +63,29 @@ bot.on("callback_query", async (ctx) => {
 async function bootstrap() {
   await initSchema();
   await BotInfo.init(bot.telegram);
+  await BotDescription.apply(bot.telegram);
   if (ADMIN_ID) {
     await AdminModel.bootstrapAdmin(ADMIN_ID);
   }
   await Queue.start(bot);
   console.log("Postgres schema ready, download queue worker started");
 
-  if (usePolling) {
-    await bot.telegram.deleteWebhook().catch(() => {});
-    bot.launch({ allowedUpdates: ALLOWED_UPDATES });
-    console.log("Bot started in long-polling mode (BaseURL not set)");
-  } else {
-    app.listen(PORT, () => {
-      console.log(`Example app listening on port ${PORT}!`);
-    });
+  app.listen(PORT, () => {
+    console.log(`Express listening on port ${PORT}`);
+  });
+
+  if (BaseURL) {
+    // A real, stable domain was given (production) — use it directly as a
+    // permanent webhook, no ngrok/monitoring needed.
+    await bot.telegram.setWebhook(BaseURL, { allowed_updates: ALLOWED_UPDATES });
+    console.log("Bot started on fixed webhook:", BaseURL);
+    return;
   }
+
+  // No fixed domain (local dev) — webhook via ngrok when reachable, with
+  // automatic fallback to (and recovery from) long-polling.
+  const connection = new ConnectionManager(bot, { port: PORT, allowedUpdates: ALLOWED_UPDATES });
+  await connection.start();
 }
 
 bootstrap().catch((err) => {
