@@ -30,10 +30,18 @@ A Telegram bot that downloads video and audio from YouTube, Instagram, and TikTo
 | Transcoding | ffmpeg | Merges yt-dlp's video+audio streams, extracts MP3 audio, resizes thumbnails |
 | Large uploads | Optional local [telegram-bot-api](https://github.com/tdlib/telegram-bot-api) server (Docker) | Raises Telegram's upload cap from 50MB to 2000MB |
 | Connectivity | Webhook (primary) with automatic long-polling fallback | See below |
+| Logging | [winston](https://github.com/winstonjs/winston), daily-rotated JSON files | A crash or rejected promise with nothing but a console message is nearly impossible to diagnose after the fact — see Reliability below |
 
 ### Hybrid webhook/polling
 
 Without a stable public domain, a webhook needs a tunnel — and tunnels drop. `functions/ConnectionManager.js` runs webhook delivery via an [ngrok](https://ngrok.com) tunnel as the primary mode, health-checking it every 30 seconds (`getWebhookInfo` plus tunnel liveness). Two consecutive failed checks trigger an automatic fallback to long-polling; two consecutive healthy checks while polling trigger an automatic switch back to a fresh webhook. If `BaseURL` is configured (e.g. a real domain in production), this whole mechanism is skipped in favor of a single fixed webhook.
+
+### Reliability
+
+- **Logging**: every `console.*` call has been replaced with a `winston` logger (`functions/logger.js`) writing to `logs/app-YYYY-MM-DD.log` (everything, 14-day retention) and `logs/error-YYYY-MM-DD.log` (warnings/errors only — check this one first when something's wrong), on top of readable console output in dev.
+- **Crash visibility**: `process.on("uncaughtException"/"unhandledRejection")` and `bot.catch()` ensure a failure is always logged before the process exits, instead of disappearing silently — this is exactly how two long-standing bugs (an unawaited `setMyCommands` call, and a burst of parallel bot-description API calls that tripped Telegram's rate limit) were found and fixed.
+- **Burst protection**: once the download queue backs up past 50 pending jobs, new requests get a "the bot is busy, try again shortly" reply instead of silently queueing behind a potentially very long wait.
+- **Long-download safety**: pg-boss's per-job timeout is 60 minutes (not the default 15) — it's enforced as a handler-execution timeout starting once a job is picked up, and a large video near the 2000MB cap can legitimately take a while; too short a timeout risked pg-boss retrying a job whose original download was still quietly running in the background.
 
 ### Request flow
 
@@ -132,7 +140,8 @@ On first boot, the app creates its Postgres schema automatically and bootstraps 
 ├── user/                     # User model
 ├── admin/                    # Admin roles, channels, broadcast, bot settings, /admin menu
 ├── functions/                # Cross-cutting helpers: subscription checks, channel-membership
-│                              # events, bot info/description, hybrid connection manager, ngrok
+│                              # events, bot info/description, hybrid connection manager, ngrok,
+│                              # structured logging
 ├── services/ytdlp.js          # yt-dlp process wrapper + metadata/thumbnail extraction
 ├── queue/                    # pg-boss workers: download+send, broadcast delivery
 ├── text.json                 # UI strings (uz/ru/en)
