@@ -52,6 +52,25 @@ Lokal kompyuterda barqaror ochiq domen yo'q, shuning uchun `functions/Connection
 - **`.env`da `BaseURL` sozlansa** (production, haqiqiy domen bilan) — ngrok/ConnectionManager umuman ishga tushmaydi, to'g'ridan-to'g'ri shu doimiy URL'ga webhook o'rnatiladi (monitoring shart emas, domen barqaror deb hisoblanadi).
 - ngrok winget orqali o'rnatilgan (`Ngrok.Ngrok`), lekin winget'dagi versiya (3.3.1) eskirgan chiqdi (`ERR_NGROK_121` — minimal versiya talabi), `ngrok update` bilan yangilangan (3.39.x). Yangilangandan keyin binary **yangi joyga** ko'chadi (`%LOCALAPPDATA%\Microsoft\WindowsApps\ngrok.ngrok_*\ngrok.exe`) — `.env`dagi `NGROK_BIN` shu yangilangan yo'lni ko'rsatishi kerak.
 
+## Loglash va barqarorlik (2026-07-25)
+
+`functions/logger.js` (winston) — barcha `console.log`/`console.error` shu bilan almashtirildi:
+- `logs/app-YYYY-MM-DD.log` — barcha loglar (info+), kunlik rotatsiya, 14 kun saqlanadi
+- `logs/error-YYYY-MM-DD.log` — faqat warn/error — tizim to'xtasa/muammo bo'lsa **avval shu qisqa faylni** tekshirish kerak
+- Dev'da konsolga ham rangli/o'qilishi oson formatda chiqadi
+- `logs/` `.gitignore`da
+
+Shu bilan birga `process.on("uncaughtException"/"unhandledRejection")` va `bot.catch()` qo'shildi (`index.js`) — avval bunday xatolar **hech qanday izsiz** jarayonni yashirincha to'xtatib qo'yardi (bu seans davomida bir necha marta worker jarayoni "yo'qolib qolgani" shundan edi).
+
+**Loglash yoqilgan zahoti 2 ta eski, ko'rinmas xato topildi va tuzatildi:**
+1. `bot.telegram.setMyCommands(...)` hech qachon `await`/`.catch()` qilinmagan edi (loyihaning eng boshidan, prototip davridan) — Telegram uni rate-limit (429) qilganda "unhandled rejection" bo'lib chiqar, jarayon buzilardi.
+2. Bootstrap'da `BotDescription.apply()` 8 ta so'rovni **bir vaqtda** (`Promise.allSettled`) yuborardi — bu doimiy ravishda Telegram rate-limitiga tegib turardi. Endi ketma-ket, orada 300ms kechikish bilan yuboriladi; muvaffaqiyatsiz bo'lsa faqat ogohlantiradi, **butun botni to'xtatmaydi** (bootstrap'dagi boshqa kosmetik bo'lmagan — DB, navbat — qadamlar hamon xato bo'lsa to'xtaydi).
+
+**Yuk/burst himoyasi** ("100+ so'rov bir vaqtda kelsa" va "video hajmi katta bo'lsa" degan savolларга javoban):
+- `pg-boss`ning `expireInMinutes`i **15 → 60 daqiqaga** oshirildi (`queue/index.js`). Bu muddat navbatda kutish vaqtiga emas, balki job **ishga tushgandan keyingi** ishlash vaqtiga tegishli (tekshirildi, pg-boss manba kodida tasdiqlandi: `startedOn + expireIn`). Muammo: 2000MB'ga yaqin katta video 15 daqiqadan ko'p vaqt olishi mumkin edi — shunda pg-boss job'ni "muvaffaqiyatsiz" deb hisoblab qayta urinar edi, lekin haqiqiy yuklab olish **to'xtamasdan orqa fonda davom etardi** (pg-boss uni bekor qila olmaydi) — natijada video ikki marta yuborilishi yoki resurs isrofi xavfi bor edi.
+- Yangi `Queue.isQueueFull()` (`pg-boss`ning `getQueueSize`) — navbatda **50+** so'rov bo'lsa, yangi so'rovlarga "hozir band, keyinroq urinib ko'ring" (`err_busy`, 3 tilda) deyiladi, ular jimgina o'nlab daqiqalik navbatga qo'yilmaydi (`Controllers.js`).
+- Eslatma: bu ikkalasi ham **DOWNLOAD_CONCURRENCY**ga bog'liq muammoning yumshatilishi, tub yechimi emas — chinakam ko'p-foydalanuvchili tezlik uchun VPS'da concurrency'ni oshirish kerak bo'ladi (yuqoriga qarang).
+
 ## Hosting qarori
 - Cloudflare Workers — rad etildi (yuqoridagi sabab).
 - Oracle Cloud Free Tier — sinab ko'rildi, lekin ro'yxatdan o'tishda muammolar chiqdi (karta tasdiqlashda "qotib qolish", keyin "home region" xatosi, operator bilan bog'lanish talab qilindi). Support javobi noaniq muddatga cho'zilishi mumkinligi sababli tashlab yuborildi. Foydalanuvchiga Oracle support'ga yozish uchun tayyor xat (EN) berildi.
@@ -82,6 +101,7 @@ Lokal kompyuterda barqaror ochiq domen yo'q, shuning uchun `functions/Connection
 - `functions/MediaMessage.js` — caption va "guruhga qo'shish" tugmasi qurish
 - `functions/ConnectionManager.js` — webhook/polling gibrid holat mashinasi (sog'liqni tekshirish, avtomatik almashish)
 - `functions/Ngrok.js` — ngrok tunnel jarayonini boshqarish (ishga tushirish, URL olish, holatini tekshirish)
+- `functions/logger.js` — winston logger (fayllarga rotatsiya bilan yozish + dev konsol)
 - `services/ytdlp.js` — yt-dlp orqali video/audio yuklab olish + metadata/thumbnail parser (`python -m yt_dlp`, 480p cap, `--max-filesize`, jarayon-qulashi uchun retry)
 - `queue/index.js`, `queue/downloadAndSend.js`, `queue/broadcast.js` — pg-boss worker: yuklash+yuborish (parallel, `DOWNLOAD_CONCURRENCY`), xato klassifikatsiyasi, reklama tarqatish (matn/rasm/video/albom, caption-split)
 - `text.json` — 3 tilli (uz/ru/en) matnlar
@@ -126,9 +146,11 @@ VPS uchun mahalliy kompyuterda tayyorlangan: `~/.ssh/oracle_vps` (nomi tarixiy, 
 12. ✅ **Instagram** (video/Reels) real havola bilan sinaldi va ishlaydi; faqat rasm/carousel postlar qo'llab-quvvatlanmaydi (kutilgan cheklov)
 13. ✅ **GitHub**: kod push qilingan (`origin/main` bilan sinxron), portativ `.env` qiymatlari (DB, token, Telegram API, bot-api URL) GitHub Actions Secrets'ga saqlangan — VPS uchun deploy workflow keyinroq shulardan foydalanadi. Eski Cloudflare davridan qolgan secretlar tozalangan.
 14. ✅ O'lik kod tozalandi (eski bot shablonidan qolgan ishlatilmagan fayllar/eksportlar)
-15. ⬜ TikTok bu tarmoqdan network darajasida ochilmaydi (VPN kerak, alohida masala) — yagona ochiq platforma muammosi
-16. ⬜ Lokal test to'liq muvaffaqiyatli bo'lgach: Hetzner tasdiqlashni yakunlash ($25 karta orqali, foydalanuvchi o'zi kiritadi) → CX22 server yaratish → SSH orqali production deploy. **Diqqat**: VPS'da yt-dlp uchun Python3 + pip + ffmpeg o'rnatish kerak bo'ladi (`apt install python3-pip ffmpeg`, keyin `pip install yt-dlp curl_cffi "yt-dlp[default]"`), Cobalt endi kerak emas. Local telegram-bot-api uchun ham xuddi shu `TELEGRAM_API_ID`/`HASH`ni VPS'ning `.env`iga ko'chirish kifoya. Production'da odatda `BaseURL` (haqiqiy domen) ishlatiladi — shunda ngrok/`ConnectionManager` umuman kerak bo'lmaydi, `DOWNLOAD_CONCURRENCY` ham VPS resurslariga qarab oshirilishi mumkin.
-17. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
+15. ✅ **Loglash tizimi** (winston, fayl+konsol, kunlik rotatsiya) va global crash handler'lar qo'shildi — shu bilan 2 ta eski ko'rinmas xato (unawaited `setMyCommands`, parallel `BotDescription` so'rovlaridan rate-limit) topilib tuzatildi
+16. ✅ **Burst/katta-video himoyasi**: `expireInMinutes` 15→60, `Queue.isQueueFull()` orqali 50+ navbatda "band" xabari
+17. ⬜ TikTok bu tarmoqdan network darajasida ochilmaydi (VPN kerak, alohida masala) — yagona ochiq platforma muammosi
+18. ⬜ Lokal test to'liq muvaffaqiyatli bo'lgach: Hetzner tasdiqlashni yakunlash ($25 karta orqali, foydalanuvchi o'zi kiritadi) → CX22 server yaratish → SSH orqali production deploy. **Diqqat**: VPS'da yt-dlp uchun Python3 + pip + ffmpeg o'rnatish kerak bo'ladi (`apt install python3-pip ffmpeg`, keyin `pip install yt-dlp curl_cffi "yt-dlp[default]"`), Cobalt endi kerak emas. Local telegram-bot-api uchun ham xuddi shu `TELEGRAM_API_ID`/`HASH`ni VPS'ning `.env`iga ko'chirish kifoya. Production'da odatda `BaseURL` (haqiqiy domen) ishlatiladi — shunda ngrok/`ConnectionManager` umuman kerak bo'lmaydi, `DOWNLOAD_CONCURRENCY` ham VPS resurslariga qarab oshirilishi mumkin.
+19. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
 
 ## Qabul qilingan qoidalar / kelishuvlar
 - Avval asosiy oqim to'liq ishga tushirilib sinaladi, **keyin** premium/reklama qatlami qo'shiladi (foydalanuvchi qarori).
