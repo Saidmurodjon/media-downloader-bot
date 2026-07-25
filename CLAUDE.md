@@ -67,7 +67,7 @@ Lokal kompyuterda barqaror ochiq domen yo'q, shuning uchun `functions/Connection
 - Cobalt Docker konteyneri olib tashlandi (`docker rm -f`), `docker-compose.yml`dan ham o'chirildi.
 - Real Telegram orqali sinaldi (@UpperDownloaderBot): YouTube havolalari (turli hajmda, jumladan 2000MB limit ostidagi kattalar ham) muvaffaqiyatli yuklab olindi; kesh, xato xabarlari, caption/thumbnail/guruh-tugmasi tekshirildi — foydalanuvchi tasdiqladi.
 - **TikTok**: bu tarmoq/kompyuterdan `https://www.tiktok.com`ga umuman ulanib bo'lmaydi (`curl` 15s'da timeout, HTTP javobsiz) — kod/yt-dlp muammosi emas, ISP/davlat darajasidagi cheklov ehtimoli katta (O'zbekiston). VPN/proxy bo'lmasa hal qilib bo'lmaydi, hozircha ochiq masala.
-- **Instagram**: tarmoq orqali ochiladi, lekin haqiqiy post havolasi bilan hali sinalmagan (yt-dlp'ning Instagram extractor'i vaqti-vaqti bilan "broken" deb belgilanishi mumkin — real havola bilan tekshirish kerak).
+- **Instagram**: real Reel/video havola bilan sinaldi — **ishlaydi** (yuklash + caption + thumbnail + Telegram'ga yuborish, to'liq zanjir). Faqat **rasm/carousel** (bir nechta rasmdan iborat, videosiz) postlar ishlamaydi — bu kutilgan holat, yt-dlp "No video formats found" deydi, chunki bunday postda haqiqatan video yo'q (bot faqat video/audio yuklaydi, rasm emas).
 - **Muhim topilma — parallel yuklab olish resurs muammosi**: `pg-boss` standart holda faqat 1 ta job'ni bir vaqtda qayta ishlaydi (`teamSize`/`teamConcurrency: 1`) — bu ko'p-foydalanuvchili tezlikka yomon ta'sir qilardi, shuning uchun oshirilgan edi. Lekin **3 taga** oshirilganda bu Windows dev kompyuterida `STATUS_DLL_INIT_FAILED` (`0xC0000142`, exit code `3221225794`) bilan yt-dlp/ffmpeg jarayonlarini qulatib qo'ydi (resurs yetishmovchiligi). Hal qilindi: `DOWNLOAD_CONCURRENCY` env orqali sozlanadigan qilindi, standart **2**ga tushirildi (VPS'da oshirish mumkin), va bu turdagi qulash (stderr bo'sh bo'lgan nonzero exit) endi `"process_crash"` deb belgilanib, `"empty_download"` kabi bir marta avtomatik qayta uriniladi (`queue/index.js`, `services/ytdlp.js`).
 
 ## Muhim fayllar
@@ -86,6 +86,9 @@ Lokal kompyuterda barqaror ochiq domen yo'q, shuning uchun `functions/Connection
 - `queue/index.js`, `queue/downloadAndSend.js`, `queue/broadcast.js` — pg-boss worker: yuklash+yuborish (parallel, `DOWNLOAD_CONCURRENCY`), xato klassifikatsiyasi, reklama tarqatish (matn/rasm/video/albom, caption-split)
 - `text.json` — 3 tilli (uz/ru/en) matnlar
 - `docker-compose.yml` — local telegram-bot-api (Cobalt olib tashlangan)
+- `README.md` — ingliz tilida, GitHub uchun professional loyiha hujjati (xususiyatlar, arxitektura, o'rnatish)
+
+**Tozalangan o'lik kod** (2026-07-25): `test.js` va `keyboards/Keyboards.js` — aloqasiz eski bot shablonidan (kontakt so'rash, "Service/Meeting" oqimi) qolgan, hech qayerda ishlatilmagan fayllar o'chirildi. `keyboards/InlineKeyboards.js`da ham xuddi shu shablondan qolgan 4 ta ishlatilmagan eksport (`setInlineKey`, `setInlineMeet`, `setInlineServiceTrue`, `setOldService`) olib tashlandi — faqat `languages` (til tanlash) qoldi.
 
 ## Kerakli `.env` o'zgaruvchilari
 ```
@@ -120,10 +123,12 @@ VPS uchun mahalliy kompyuterda tayyorlangan: `~/.ssh/oracle_vps` (nomi tarixiy, 
 9. ✅ **Parallel yuklab olish** (`DOWNLOAD_CONCURRENCY=2`) — ko'p-foydalanuvchili tezlik uchun, resurs-qulashi muammosi tuzatilgan
 10. ✅ **Gibrid webhook/polling** (ngrok) — real outage+recovery sinovidan o'tdi, ~1 daqiqada ikkala yo'nalishda ham avtomatik almashadi
 11. ✅ **Bot profil tavsifi** kod orqali o'rnatiladi (uz/ru/en), `/start`/`/about` YouTube'ni qamrab oladigan qilib yangilandi
-12. ✅ **Kod commit qilingan** — 5 ta commit (`5653466`..`7999e4a`), working tree toza
-13. ⬜ Instagram real havola bilan hali sinalmagan; TikTok bu tarmoqdan network darajasida ochilmaydi (VPN kerak, alohida masala)
-14. ⬜ Lokal test to'liq muvaffaqiyatli bo'lgach: Hetzner tasdiqlashni yakunlash ($25 karta orqali, foydalanuvchi o'zi kiritadi) → CX22 server yaratish → SSH orqali production deploy. **Diqqat**: VPS'da yt-dlp uchun Python3 + pip + ffmpeg o'rnatish kerak bo'ladi (`apt install python3-pip ffmpeg`, keyin `pip install yt-dlp curl_cffi "yt-dlp[default]"`), Cobalt endi kerak emas. Local telegram-bot-api uchun ham xuddi shu `TELEGRAM_API_ID`/`HASH`ni VPS'ning `.env`iga ko'chirish kifoya. Production'da odatda `BaseURL` (haqiqiy domen) ishlatiladi — shunda ngrok/`ConnectionManager` umuman kerak bo'lmaydi, `DOWNLOAD_CONCURRENCY` ham VPS resurslariga qarab oshirilishi mumkin.
-15. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
+12. ✅ **Instagram** (video/Reels) real havola bilan sinaldi va ishlaydi; faqat rasm/carousel postlar qo'llab-quvvatlanmaydi (kutilgan cheklov)
+13. ✅ **GitHub**: kod push qilingan (`origin/main` bilan sinxron), portativ `.env` qiymatlari (DB, token, Telegram API, bot-api URL) GitHub Actions Secrets'ga saqlangan — VPS uchun deploy workflow keyinroq shulardan foydalanadi. Eski Cloudflare davridan qolgan secretlar tozalangan.
+14. ✅ O'lik kod tozalandi (eski bot shablonidan qolgan ishlatilmagan fayllar/eksportlar)
+15. ⬜ TikTok bu tarmoqdan network darajasida ochilmaydi (VPN kerak, alohida masala) — yagona ochiq platforma muammosi
+16. ⬜ Lokal test to'liq muvaffaqiyatli bo'lgach: Hetzner tasdiqlashni yakunlash ($25 karta orqali, foydalanuvchi o'zi kiritadi) → CX22 server yaratish → SSH orqali production deploy. **Diqqat**: VPS'da yt-dlp uchun Python3 + pip + ffmpeg o'rnatish kerak bo'ladi (`apt install python3-pip ffmpeg`, keyin `pip install yt-dlp curl_cffi "yt-dlp[default]"`), Cobalt endi kerak emas. Local telegram-bot-api uchun ham xuddi shu `TELEGRAM_API_ID`/`HASH`ni VPS'ning `.env`iga ko'chirish kifoya. Production'da odatda `BaseURL` (haqiqiy domen) ishlatiladi — shunda ngrok/`ConnectionManager` umuman kerak bo'lmaydi, `DOWNLOAD_CONCURRENCY` ham VPS resurslariga qarab oshirilishi mumkin.
+17. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
 
 ## Qabul qilingan qoidalar / kelishuvlar
 - Avval asosiy oqim to'liq ishga tushirilib sinaladi, **keyin** premium/reklama qatlami qo'shiladi (foydalanuvchi qarori).
