@@ -1,5 +1,5 @@
 const PgBoss = require("pg-boss");
-const { DATABASE_URL } = require("../config");
+const { DATABASE_URL, DOWNLOAD_CONCURRENCY } = require("../config");
 const VideoCache = require("../db/VideoCache");
 const DownloadLog = require("../db/DownloadLog");
 const { downloadAndSend } = require("./downloadAndSend");
@@ -33,19 +33,13 @@ function errorKey(err) {
   ) {
     return "err_toolarge";
   }
-  if (msg.startsWith("ERROR:") || msg === "empty_download") {
+  if (msg.startsWith("ERROR:") || msg === "empty_download" || msg === "process_crash") {
     return "err_unavailable";
   }
   return "er";
 }
 
 boss.on("error", (err) => console.error("pg-boss error", err));
-
-// pg-boss defaults to teamSize/teamConcurrency of 1 — one job at a time,
-// globally. Without this, a second user's download just waits behind the
-// first user's, even though downloads are network-bound (not CPU-bound) and
-// have plenty of room to run side by side.
-const DOWNLOAD_CONCURRENCY = 3;
 
 async function start(bot) {
   await boss.start();
@@ -69,16 +63,18 @@ function enqueueBroadcast(jobData) {
   return boss.send(BROADCAST_QUEUE_NAME, jobData, { retryLimit: 0, expireInMinutes: 30 });
 }
 
-// Worth one retry since an "empty_download" is occasionally a transient
-// network glitch rather than a permanently broken/restricted link.
-const EMPTY_DOWNLOAD_RETRIES = 1;
+// Worth one retry for these — both are occasionally transient (a network
+// glitch, or the yt-dlp/ffmpeg process getting crowded out under concurrent
+// downloads) rather than a permanently broken/restricted link.
+const RETRYABLE_ERRORS = new Set(["empty_download", "process_crash"]);
+const DOWNLOAD_RETRIES = 1;
 
 async function downloadWithRetry(bot, chatId, url, format) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await downloadAndSend(bot, chatId, url, format);
     } catch (err) {
-      if (err.message === "empty_download" && attempt < EMPTY_DOWNLOAD_RETRIES) {
+      if (RETRYABLE_ERRORS.has(err.message) && attempt < DOWNLOAD_RETRIES) {
         continue;
       }
       throw err;

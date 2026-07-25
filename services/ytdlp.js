@@ -126,7 +126,15 @@ function downloadVideo(url, destPath, format = "video") {
         return resolve(meta);
       }
       cleanupSidecars(destPath);
-      reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+      // A nonzero exit with no stderr at all (nothing logged, not even a
+      // warning) means the process itself crashed before yt-dlp could run —
+      // e.g. Windows STATUS_DLL_INIT_FAILED (0xC0000142) under process/
+      // resource contention from concurrent downloads. Transient, not a
+      // broken link, so it's tagged for the same retry path as empty_download.
+      if (!stderr.trim()) {
+        return reject(new Error("process_crash"));
+      }
+      reject(new Error(stderr.trim()));
     });
   });
 }

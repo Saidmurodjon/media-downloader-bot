@@ -9,4 +9,9 @@ module.exports = {
   YTDLP_PYTHON: env.YTDLP_PYTHON || "python",
   YTDLP_FFMPEG_LOCATION: env.YTDLP_FFMPEG_LOCATION || "",
   ADMIN_ID: env.ADMIN_ID,
+  // How many downloads run at once. Concurrent yt-dlp/ffmpeg spawns can
+  // exhaust process/DLL-init resources on a constrained dev machine (seen as
+  // Windows STATUS_DLL_INIT_FAILED crashes at 3), so keep this conservative
+  // locally; a VPS can raise it via the env var.
+  DOWNLOAD_CONCURRENCY: Number(env.DOWNLOAD_CONCURRENCY) || 2,
 };
