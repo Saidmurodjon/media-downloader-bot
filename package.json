@@ -1,7 +1,7 @@
 {
-  "name": "testbot",
+  "name": "media-downloader-bot",
   "version": "1.0.0",
-  "description": "ulandi",
+  "description": "Telegram bot for downloading video/audio from YouTube, Instagram, and TikTok",
   "main": "index.js",
   "scripts": {
     "start": "nodemon index.js",
