@@ -11,6 +11,11 @@ const QUEUE_NAME = "download-video";
 const BROADCAST_QUEUE_NAME = "broadcast-message";
 const boss = new PgBoss(DATABASE_URL);
 
+// A backlog beyond this means a new request would likely wait an
+// unreasonably long time behind it (DOWNLOAD_CONCURRENCY is small) — better
+// to say so up front than to leave someone wondering if the bot is stuck.
+const MAX_QUEUE_SIZE = 50;
+
 function t(lang, key) {
   return (texts[lang] && texts[lang][key]) || texts.in[key];
 }
@@ -57,11 +62,25 @@ async function start(bot) {
 }
 
 function enqueue(jobData) {
-  return boss.send(QUEUE_NAME, jobData, { retryLimit: 2, expireInMinutes: 15 });
+  // pg-boss enforces this as a handler-execution timeout, not a queue-wait
+  // timeout — it starts counting once a worker picks the job up. A very
+  // large video (near the 2000MB cap) can legitimately take a while to
+  // download and upload, so this needs real headroom: too short, and
+  // pg-boss considers the job failed and retries it while the original
+  // download is still quietly running in the background, risking a
+  // duplicate send.
+  return boss.send(QUEUE_NAME, jobData, { retryLimit: 2, expireInMinutes: 60 });
 }
 
 function enqueueBroadcast(jobData) {
   return boss.send(BROADCAST_QUEUE_NAME, jobData, { retryLimit: 0, expireInMinutes: 30 });
+}
+
+// Lets callers check the backlog before enqueueing, so a burst of requests
+// can be told the bot is busy instead of silently queueing behind a long wait.
+async function isQueueFull() {
+  const size = await boss.getQueueSize(QUEUE_NAME);
+  return size >= MAX_QUEUE_SIZE;
 }
 
 // Worth one retry for these — both are occasionally transient (a network
@@ -99,4 +118,4 @@ async function processJob(bot, { chatId, url, platform, format = "video", status
   }
 }
 
-module.exports = { start, enqueue, enqueueBroadcast };
+module.exports = { start, enqueue, enqueueBroadcast, isQueueFull };

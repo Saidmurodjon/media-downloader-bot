@@ -118,6 +118,11 @@ module.exports = class Controllers {
         return;
       }
 
+      if (await Queue.isQueueFull()) {
+        await ctx.telegram.sendMessage(chat_id, t(user.language, "err_busy"));
+        return;
+      }
+
       await ctx.replyWithChatAction(format === "audio" ? "upload_voice" : "upload_video");
       const status = await ctx.telegram.sendMessage(chat_id, t(user.language, "processing"));
       await Queue.enqueue({

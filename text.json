@@ -13,7 +13,8 @@
     "subscribe_check": "✅ A'zo bo'ldim",
     "subscribe_still_no": "Siz hali kanalga a'zo bo'lmagansiz.",
     "subscribe_success": "✅ Rahmat! Endi video havolasini yuborishingiz mumkin.",
-    "choose_format": "Qaysi shaklda kerak?"
+    "choose_format": "Qaysi shaklda kerak?",
+    "err_busy": "Hozir juda ko'p so'rov bor 🙏\nBiroz kutib, birozdan keyin qayta urinib ko'ring."
   },
   "ru": {
     "start": "Привет! 👋 Я скачиваю видео/аудио с YouTube, Instagram и TikTok.\n\nПросто отправьте ссылку.",
@@ -29,7 +30,8 @@
     "subscribe_check": "✅ Я подписался",
     "subscribe_still_no": "Вы ещё не подписались на канал.",
     "subscribe_success": "✅ Спасибо! Теперь вы можете отправить ссылку на видео.",
-    "choose_format": "В каком формате вам нужно?"
+    "choose_format": "В каком формате вам нужно?",
+    "err_busy": "Сейчас слишком много запросов 🙏\nПодождите немного и попробуйте снова."
   },
   "in": {
     "start": "Hi! 👋 I download video/audio from YouTube, Instagram and TikTok.\n\nJust send me a link.",
@@ -45,6 +47,7 @@
     "subscribe_check": "✅ I've joined",
     "subscribe_still_no": "You haven't joined the channel yet.",
     "subscribe_success": "✅ Thanks! You can now send a video link.",
-    "choose_format": "Which format would you like?"
+    "choose_format": "Which format would you like?",
+    "err_busy": "There are too many requests right now 🙏\nPlease wait a bit and try again."
   }
 }
