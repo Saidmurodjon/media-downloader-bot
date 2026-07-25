@@ -6,6 +6,7 @@ const Queue = require("./queue");
 const Subscription = require("./functions/Subscription");
 const AdminModel = require("./admin/AdminModel");
 const MediaMessage = require("./functions/MediaMessage");
+const logger = require("./functions/logger");
 const texts = require("./text.json");
 
 function t(lang, key) {
@@ -128,7 +129,7 @@ module.exports = class Controllers {
         language: user.language,
       });
     } catch (err) {
-      console.error(err);
+      logger.error("MessageController failed", { chatId: chat_id, error: err.stack || String(err) });
       await ctx.telegram.sendMessage(chat_id, t(user.language, "er"));
     }
   }

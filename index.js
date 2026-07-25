@@ -9,21 +9,36 @@ const { handleChatMemberUpdate } = require("./functions/ChannelMemberHandler");
 const BotInfo = require("./functions/BotInfo");
 const BotDescription = require("./functions/BotDescription");
 const ConnectionManager = require("./functions/ConnectionManager");
+const logger = require("./functions/logger");
 const express = require("express");
 const app = express();
 
 const ALLOWED_UPDATES = ["message", "callback_query", "chat_member"];
+
+// Catch what would otherwise be a silent crash (or an unhandled promise that
+// just hangs) so there's always a trace of *why* the process stopped.
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught exception — process exiting", { error: err.stack || String(err) });
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", { error: reason?.stack || String(reason) });
+});
 
 const bot = new Telegraf(
   TOKEN,
   BOT_API_URL ? { telegram: { apiRoot: BOT_API_URL } } : undefined
 );
 
-bot.telegram.setMyCommands([
-  { command: "/start", description: "Start bot" },
-  { command: "/about", description: "About Bot" },
-  { command: "/language", description: "choose language" },
-]);
+// Telegraf swallows errors thrown inside handlers by default; without this
+// they vanish instead of reaching the logs.
+bot.catch((err, ctx) => {
+  logger.error("Unhandled bot error", {
+    error: err.stack || String(err),
+    updateType: ctx.updateType,
+    chatId: ctx.chat?.id,
+  });
+});
 
 // Express always runs, whether the active delivery mode is webhook or
 // polling — GET requests fall through webhookCallback untouched (it only
@@ -63,22 +78,35 @@ bot.on("callback_query", async (ctx) => {
 async function bootstrap() {
   await initSchema();
   await BotInfo.init(bot.telegram);
-  await BotDescription.apply(bot.telegram);
+
+  // Cosmetic setup (command list, profile description) shouldn't take the
+  // whole bot down if Telegram rate-limits it — log and move on.
+  await bot.telegram
+    .setMyCommands([
+      { command: "/start", description: "Start bot" },
+      { command: "/about", description: "About Bot" },
+      { command: "/language", description: "choose language" },
+    ])
+    .catch((err) => logger.warn("setMyCommands failed", { error: err.message }));
+  await BotDescription.apply(bot.telegram).catch((err) =>
+    logger.warn("BotDescription.apply failed", { error: err.message })
+  );
+
   if (ADMIN_ID) {
     await AdminModel.bootstrapAdmin(ADMIN_ID);
   }
   await Queue.start(bot);
-  console.log("Postgres schema ready, download queue worker started");
+  logger.info("Postgres schema ready, download queue worker started");
 
   app.listen(PORT, () => {
-    console.log(`Express listening on port ${PORT}`);
+    logger.info(`Express listening on port ${PORT}`);
   });
 
   if (BaseURL) {
     // A real, stable domain was given (production) — use it directly as a
     // permanent webhook, no ngrok/monitoring needed.
     await bot.telegram.setWebhook(BaseURL, { allowed_updates: ALLOWED_UPDATES });
-    console.log("Bot started on fixed webhook:", BaseURL);
+    logger.info("Bot started on fixed webhook", { BaseURL });
     return;
   }
 
@@ -89,6 +117,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error("Bootstrap failed:", err);
+  logger.error("Bootstrap failed", { error: err.stack || String(err) });
   process.exit(1);
 });

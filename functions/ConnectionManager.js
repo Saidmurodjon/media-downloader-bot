@@ -1,4 +1,5 @@
 const Ngrok = require("./Ngrok");
+const logger = require("./logger");
 
 const CHECK_INTERVAL_MS = 30000;
 // Hysteresis: don't switch on a single blip in either direction, and don't
@@ -27,7 +28,7 @@ module.exports = class ConnectionManager {
     try {
       url = await Ngrok.start(this.port);
     } catch (err) {
-      console.error("[ConnectionManager] ngrok failed to start, using polling:", err.message);
+      logger.warn("ngrok failed to start, using polling", { error: err.message });
     }
 
     if (url) {
@@ -37,7 +38,7 @@ module.exports = class ConnectionManager {
     }
 
     this.timer = setInterval(() => {
-      this.check().catch((err) => console.error("[ConnectionManager] check failed", err));
+      this.check().catch((err) => logger.error("ConnectionManager check failed", { error: err.stack || String(err) }));
     }, CHECK_INTERVAL_MS);
   }
 
@@ -51,7 +52,7 @@ module.exports = class ConnectionManager {
     this.bot.startPolling(this.allowedUpdates);
     this.mode = "polling";
     this.badCount = 0;
-    console.log("[ConnectionManager] switched to POLLING");
+    logger.info("ConnectionManager switched to POLLING");
   }
 
   async switchToWebhook(url) {
@@ -60,7 +61,7 @@ module.exports = class ConnectionManager {
     await this.bot.telegram.setWebhook(`${url}/`, { allowed_updates: this.allowedUpdates });
     this.mode = "webhook";
     this.goodCount = 0;
-    console.log("[ConnectionManager] switched to WEBHOOK:", url);
+    logger.info("ConnectionManager switched to WEBHOOK", { url });
   }
 
   async check() {
@@ -84,10 +85,11 @@ module.exports = class ConnectionManager {
     }
 
     this.badCount++;
-    console.warn(
-      `[ConnectionManager] webhook unhealthy (${this.badCount}/${UNHEALTHY_THRESHOLD})`,
-      info.last_error_message || "(no ngrok tunnel)"
-    );
+    logger.warn("ConnectionManager webhook unhealthy", {
+      badCount: this.badCount,
+      threshold: UNHEALTHY_THRESHOLD,
+      reason: info.last_error_message || "(no ngrok tunnel)",
+    });
     if (this.badCount >= UNHEALTHY_THRESHOLD) {
       await this.switchToPolling();
     }

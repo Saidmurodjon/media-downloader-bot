@@ -1,4 +1,5 @@
 const ChannelModel = require("../admin/ChannelModel");
+const logger = require("./logger");
 
 module.exports = class Subscription {
   static channelUrl(channel) {
@@ -12,7 +13,7 @@ module.exports = class Subscription {
     } catch (err) {
       // Bot removed from the channel / channel deleted / etc. — fail open so
       // a misconfigured gate never locks every user out of the whole bot.
-      console.error("subscription check failed", channel, err.message);
+      logger.warn("subscription check failed", { channel, error: err.message });
       return true;
     }
   }

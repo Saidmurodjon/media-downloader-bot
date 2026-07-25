@@ -1,5 +1,6 @@
 const UserModel = require("../user/UserModel");
 const InlineKeyboards = require("../keyboards/InlineKeyboards");
+const logger = require("./logger");
 
 module.exports = class Functions {
   static async Languages(ctx) {
@@ -16,7 +17,7 @@ module.exports = class Functions {
         }
       );
     } catch (err) {
-      console.log(err);
+      logger.error("Functions.Languages failed", { error: err.stack || String(err) });
     }
   }
   static async StartUser(ctx) {
@@ -41,7 +42,7 @@ module.exports = class Functions {
         }
       );
     } catch (err) {
-      console.log(err);
+      logger.error("Functions.StartUser failed", { error: err.stack || String(err) });
     }
   }
 
@@ -72,7 +73,7 @@ module.exports = class Functions {
         message_id: up.message.message_id,
       });
     } catch (err) {
-      console.log(err);
+      logger.error("Functions.ChooseLanguage failed", { error: err.stack || String(err) });
     }
   }
 };

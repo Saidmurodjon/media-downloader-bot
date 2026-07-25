@@ -4,6 +4,7 @@ const VideoCache = require("../db/VideoCache");
 const DownloadLog = require("../db/DownloadLog");
 const { downloadAndSend } = require("./downloadAndSend");
 const { sendBroadcast } = require("./broadcast");
+const logger = require("../functions/logger");
 const texts = require("../text.json");
 
 const QUEUE_NAME = "download-video";
@@ -39,7 +40,7 @@ function errorKey(err) {
   return "er";
 }
 
-boss.on("error", (err) => console.error("pg-boss error", err));
+boss.on("error", (err) => logger.error("pg-boss error", { error: err.stack || String(err) }));
 
 async function start(bot) {
   await boss.start();
@@ -91,7 +92,7 @@ async function processJob(bot, { chatId, url, platform, format = "video", status
       await bot.telegram.deleteMessage(chatId, statusMessageId).catch(() => {});
     }
   } catch (err) {
-    console.error("download job failed", err);
+    logger.error("download job failed", { url, platform, format, chatId, error: err.stack || String(err) });
     await bot.telegram
       .sendMessage(chatId, t(language, errorKey(err)))
       .catch(() => {});
