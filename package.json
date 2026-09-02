@@ -4,7 +4,9 @@
   "description": "Telegram bot for downloading video/audio from YouTube, Instagram, and TikTok",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon index.js",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "build": "echo 'No build process required'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -13,11 +15,13 @@
   "dependencies": {
     "dotenv": "^16.0.1",
     "express": "^4.18.1",
-    "nodemon": "^2.0.19",
     "pg": "^8.11.3",
     "pg-boss": "9.0.3",
     "telegraf": "^4.8.5",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.19"
   }
 }
