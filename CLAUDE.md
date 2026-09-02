@@ -74,9 +74,8 @@ Shu bilan birga `process.on("uncaughtException"/"unhandledRejection")` va `bot.c
 ## Hosting qarori
 - Cloudflare Workers — rad etildi (yuqoridagi sabab).
 - Oracle Cloud Free Tier — sinab ko'rildi, lekin ro'yxatdan o'tishda muammolar chiqdi (karta tasdiqlashda "qotib qolish", keyin "home region" xatosi, operator bilan bog'lanish talab qilindi). Support javobi noaniq muddatga cho'zilishi mumkinligi sababli tashlab yuborildi. Foydalanuvchiga Oracle support'ga yozish uchun tayyor xat (EN) berildi.
-- **Hetzner Cloud** — tanlangan yechim. CX22 (2 vCPU, 4GB RAM, 40GB NVMe, ~€5.49/oy, 2026-yil iyun narxi). DigitalOcean'dan ~4 barobar arzon xuddi shu xarakteristikada.
-- Foydalanuvchi Hetzner'da hisob ochgan (login qilingan), lekin **hisob "increased risk" deb belgilangan va tasdiqlash (verification) talab qilinmoqda**, aks holda loyiha yaratib bo'lmaydi. Ikkita tasdiqlash yo'li bor: (a) Credit card — $25/$100/$250/$500'dan birini tanlab, kartadan **haqiqiy pul yechiladi** (hold emas, real prepaid credit sifatida hisobga qo'shiladi, keyin hosting xarajatini yopadi), natija darhol chiqadi; (b) Document — pasport/hujjat yuklash, qo'lda tekshiriladi (soatlab/kunlab). Foydalanuvchi hali tanlab, to'lovni yakunlamagan (karta ma'lumotini Claude kirita olmaydi — xavfsizlik qoidasi).
-- Shu to'siq sababli **avval lokal test qilish** qarori qabul qilindi (pastga qarang), Hetzner to'lovi keyinga qoldirilgan.
+- **Hetzner Cloud** — rejalashtirilgan edi (CX22, ~€5.49/oy), lekin hisob tasdiqlash to'sig'i ($25 karta yoki hujjat) sababli **amalda ishlatilmadi** — buning o'rniga foydalanuvchida allaqachon mavjud bo'lgan **Ubuntu server + Coolify** ishlatildi (pastga, "Production deploy" bo'limiga qarang). Hetzner rejasi shu bilan **eskirgan/rad etilgan** hisoblanadi, agar kelajakda alohida server kerak bo'lib qolmasa.
+- Shu to'siq sababli **avval lokal test qilish** qarori qabul qilingan edi — lokal test muvaffaqiyatli yakunlangach, to'g'ridan-to'g'ri mavjud Coolify serveriga production deploy qilindi (2026-09-02).
 
 ## Lokal test holati (VPS'siz, bepul) — 2026-07-24 kechqurun holatiga ko'ra ISHLAYAPTI
 - Kompyuter reboot qilindi, Docker Desktop va WSL2/Ubuntu muvaffaqiyatli ishga tushdi.
@@ -88,6 +87,22 @@ Shu bilan birga `process.on("uncaughtException"/"unhandledRejection")` va `bot.c
 - **TikTok**: bu tarmoq/kompyuterdan `https://www.tiktok.com`ga umuman ulanib bo'lmaydi (`curl` 15s'da timeout, HTTP javobsiz) — kod/yt-dlp muammosi emas, ISP/davlat darajasidagi cheklov ehtimoli katta (O'zbekiston). VPN/proxy bo'lmasa hal qilib bo'lmaydi, hozircha ochiq masala.
 - **Instagram**: real Reel/video havola bilan sinaldi — **ishlaydi** (yuklash + caption + thumbnail + Telegram'ga yuborish, to'liq zanjir). Faqat **rasm/carousel** (bir nechta rasmdan iborat, videosiz) postlar ishlamaydi — bu kutilgan holat, yt-dlp "No video formats found" deydi, chunki bunday postda haqiqatan video yo'q (bot faqat video/audio yuklaydi, rasm emas).
 - **Muhim topilma — parallel yuklab olish resurs muammosi**: `pg-boss` standart holda faqat 1 ta job'ni bir vaqtda qayta ishlaydi (`teamSize`/`teamConcurrency: 1`) — bu ko'p-foydalanuvchili tezlikka yomon ta'sir qilardi, shuning uchun oshirilgan edi. Lekin **3 taga** oshirilganda bu Windows dev kompyuterida `STATUS_DLL_INIT_FAILED` (`0xC0000142`, exit code `3221225794`) bilan yt-dlp/ffmpeg jarayonlarini qulatib qo'ydi (resurs yetishmovchiligi). Hal qilindi: `DOWNLOAD_CONCURRENCY` env orqali sozlanadigan qilindi, standart **2**ga tushirildi (VPS'da oshirish mumkin), va bu turdagi qulash (stderr bo'sh bo'lgan nonzero exit) endi `"process_crash"` deb belgilanib, `"empty_download"` kabi bir marta avtomatik qayta uriniladi (`queue/index.js`, `services/ytdlp.js`).
+
+## Production deploy — Ubuntu + Coolify + Cloudflare Tunnel (2026-09-02) — ISHLAYAPTI
+
+Bot foydalanuvchining mavjud Ubuntu serveriga (Coolify o'rnatilgan, Tailscale orqali masofadan boshqariladi — Tailscale IP `100.111.79.124`, SSH user `iep-server`) yangi Coolify loyihasi sifatida deploy qilindi. Serverning haqiqiy public IP'i yo'q — tashqi trafik **Cloudflare Tunnel** (`cloudflared` systemd xizmati, tunnel nomi `iep`) orqali kiradi, Tailscale esa faqat admin (Claude/foydalanuvchi) uchun SSH kirish yo'li.
+
+Domen: **`https://downloader.saidmurod.com`** (`BaseURL`, fixed webhook). Dastlab `downloader.iep.saidmurod.com` sinalgan edi, lekin ishlamadi — pastga qarang.
+
+### Topilgan va tuzatilgan 5 ta muammo (deploy qilingan zahoti bot umuman javob bermadi)
+1. **`BOT_API_URL` noto'g'ri sozlangan edi** — Coolify env'da bot o'zining webhook domeniga (`https://downloader.iep.saidmurod.com`) tenglashtirilgan edi, holbuki bu faqat **lokal self-hosted `telegram-bot-api` server** manzili bo'lishi kerak (`docker-compose.yml`dagi ixtiyoriy xizmat, VPS'da hali deploy qilinmagan). Natija: `index.js:30`dagi `apiRoot: BOT_API_URL` bot o'ziga-o'zi `/bot<token>/getMe` so'rov yubormoqchi bo'lib, TLS handshake xatosi bilan cheksiz qulab tushardi. **Yechim**: `BOT_API_URL` Coolify'dan butunlay o'chirildi (standart `api.telegram.org`, 50MB limit bilan ishlaydi hozircha).
+2. **`DATABASE_URL`da yozuv xatosi** — `...neondb??sslmode=require` (ikkita `?`). Asosiy `db/index.js` (`pg.Pool`) buzilmadi, chunki u alohida `ssl: { rejectUnauthorized: false }` beradi — lekin **`pg-boss`** (`queue/index.js`, `new PgBoss(DATABASE_URL)`) faqat URL query-parametriga tayanadi, ikkinchi `?` uni `sslmode` emas `?sslmode` nomli parametr qilib yuborgan, shu sabab SSL talabini aniqlay olmay "connection is insecure" xatosi bilan qulagan. **Yechim**: bitta `?` qoldirilib tuzatildi.
+3. **Cloudflare sertifikat cheklovi** — `saidmurod.com` zonasidagi Cloudflare Universal SSL faqat `saidmurod.com` va `*.saidmurod.com` (bitta daraja)ni qamraydi. `downloader.iep.saidmurod.com` ikkinchi darajali subdomen bo'lgani uchun **hech qanday mos sertifikat topilmadi** — Cloudflare edge TLS handshake'ni butunlay rad etardi (`ssl3_read_bytes:...handshake failure`), Telegram ham aynan shu xatoni ko'rardi. Cloudflare "Total TLS" (bu holatda $10/oy) ishlatish o'rniga **bepul yechim tanlandi**: domen bitta darajaga tushirildi — `downloader.saidmurod.com` (mavjud `*.saidmurod.com` wildcard'ga to'g'ri keladi). Cloudflare DNS'ga `downloader` → `iep.saidmurod.com` CNAME (proxied) qo'shildi, Coolify domeni va `BaseURL` shunga mos yangilandi.
+4. **Cloudflare Tunnel'da yangi domen uchun marshrut yo'q edi** — `cloudflared`ning "Published application routes" (Zero Trust dashboard → Networks → Tunnels → `iep` → Public Hostname) da faqat `*.iep.saidmurod.com` va `iep.saidmurod.com` bor edi, `saidmurod.com` darajasidagi yangi subdomen uchun mos yozuv yo'q edi (404 qaytarardi, Traefik'ga umuman yetib bormasdi). **Yechim**: yangi Public Hostname qo'shildi: `downloader.saidmurod.com` → Service. Avval `http://127.0.0.1:80` qo'yilganda Traefik'ning HTTP→HTTPS majburiy-redirect middleware'i tufayli **cheksiz redirect loop** hosil bo'ldi (`302 → o'ziga`). **Yechim**: Service `https://127.0.0.1:443`ga o'zgartirildi, "Additional application settings → TLS" ostida **No TLS Verify** yoqildi va **Origin Server Name** = `downloader.saidmurod.com` qo'yildi (aks holda cloudflared noto'g'ri SNI — `127.0.0.1` — yuborib, Traefik'ning Host-asosli marshrutlashi mos router topa olmay 502 qaytarardi).
+5. **Konteynerda Python/yt-dlp/ffmpeg umuman yo'q edi** — Coolify bu loyihani **Nixpacks** orqali avtomatik build qilgan (Node.js loyihasi sifatida aniqlangan), bu esa faqat `npm install`ni bajaradi — Python, pip, ffmpeg, yt-dlp o'rnatilmagan. Bot Telegram'ga javob berardi, lekin video/audio yuklab bo'lmasdi (`python: not found`). **Yechim**: repo root'ga **`Dockerfile`** qo'shildi (`node:22-bookworm-slim` asosida, `apt-get install python3 python3-pip python-is-python3 ffmpeg` + `pip3 install yt-dlp curl_cffi`), Coolify'da Build Pack **Nixpacks → Dockerfile**ga o'zgartirildi, `YTDLP_PYTHON=python3` env qo'shildi. Redeploy'dan keyin real YouTube video (webhook orqali sun'iy Telegram update simulyatsiya qilib) muvaffaqiyatli yuklab olindi va keshlandi — **to'liq zanjir (webhook → navbat → yt-dlp → Telegram'ga yuborish → kesh) tasdiqlandi**.
+
+### Diagnostika usuli (kelajakda foydali)
+Muammolar SSH orqali (`ssh -i ~/.ssh/iep_server iep-server@100.111.79.124`, key `usermod -aG docker iep-server` bilan sozlangan) `docker ps`/`docker logs`/`docker inspect` bilan topildi. Muhim nozik jihat: `functions/logger.js` production'da konsolga yozmaydi (fayllarga — `logs/app-*.log`, `logs/error-*.log` — yozadi), shuning uchun `docker logs` bo'sh/foydasiz ko'rinadi — xatoni ko'rish uchun `docker cp <container>:/app/logs /tmp/...` bilan log papkasini konteynerdan tashqariga chiqarib o'qish kerak (konteyner qayta-qayta qulab tushayotgan bo'lsa ham ishlaydi, chunki `docker cp` konteyner holatidan qat'i nazar fayl tizimiga kira oladi).
 
 ## Muhim fayllar
 - `index.js` — bootstrap: Postgres sxema, pg-boss worker, `ConnectionManager` (gibrid webhook/polling) yoki fixed webhook (`BaseURL` bo'lsa), admin/format/obuna callback routing, `chat_member` eventlari
@@ -105,7 +120,8 @@ Shu bilan birga `process.on("uncaughtException"/"unhandledRejection")` va `bot.c
 - `services/ytdlp.js` — yt-dlp orqali video/audio yuklab olish + metadata/thumbnail parser (`python -m yt_dlp`, 480p cap, `--max-filesize`, jarayon-qulashi uchun retry)
 - `queue/index.js`, `queue/downloadAndSend.js`, `queue/broadcast.js` — pg-boss worker: yuklash+yuborish (parallel, `DOWNLOAD_CONCURRENCY`), xato klassifikatsiyasi, reklama tarqatish (matn/rasm/video/albom, caption-split)
 - `text.json` — 3 tilli (uz/ru/en) matnlar
-- `docker-compose.yml` — local telegram-bot-api (Cobalt olib tashlangan)
+- `docker-compose.yml` — local telegram-bot-api (Cobalt olib tashlangan, VPS'da hali deploy qilinmagan — hozircha `BOT_API_URL` bo'sh, 50MB limit)
+- `Dockerfile` — production build (Coolify), `node:22-bookworm-slim` + python3/pip/ffmpeg/yt-dlp/curl_cffi. Coolify'da Build Pack shu faylga ("Dockerfile") sozlangan bo'lishi shart — standart Nixpacks Python/ffmpeg o'rnatmaydi.
 - `README.md` — ingliz tilida, GitHub uchun professional loyiha hujjati (xususiyatlar, arxitektura, o'rnatish)
 
 **Tozalangan o'lik kod** (2026-07-25): `test.js` va `keyboards/Keyboards.js` — aloqasiz eski bot shablonidan (kontakt so'rash, "Service/Meeting" oqimi) qolgan, hech qayerda ishlatilmagan fayllar o'chirildi. `keyboards/InlineKeyboards.js`da ham xuddi shu shablondan qolgan 4 ta ishlatilmagan eksport (`setInlineKey`, `setInlineMeet`, `setInlineServiceTrue`, `setOldService`) olib tashlandi — faqat `languages` (til tanlash) qoldi.
@@ -115,12 +131,12 @@ Shu bilan birga `process.on("uncaughtException"/"unhandledRejection")` va `bot.c
 TOKEN=
 BaseURL=                 # bo'sh = lokal gibrid webhook/polling; to'ldirilsa = fixed webhook (production)
 PORT=
-DATABASE_URL=            # Neon connection string — SINALGAN, ishlaydi
+DATABASE_URL=            # Neon connection string — SINALGAN, ishlaydi. Diqqat: oxirida bitta "?sslmode=require" bo'lsin (ikkita "??" pg-boss'ni SSL talabini aniqlay olmay qulatgan — 2026-09-02'da topilgan)
 ADMIN_ID=                # birinchi admin chat_id (bootstrap uchun)
 TELEGRAM_API_ID=         # my.telegram.org'dan, bepul — OLINGAN va sozlangan
 TELEGRAM_API_HASH=       # my.telegram.org'dan, bepul — OLINGAN va sozlangan
-BOT_API_URL=             # http://localhost:8081 — local bot-api server SOZLANGAN va ishlayapti
-YTDLP_PYTHON=            # ixtiyoriy, default "python" (Linux'da "python3" kerak bo'lishi mumkin)
+BOT_API_URL=             # FAQAT haqiqiy self-hosted telegram-bot-api server manzili bo'lsa to'ldiring (masalan http://localhost:8081) — bot o'zining webhook/BaseURL domeniga TENGLASHTIRILMASIN, aks holda bot o'ziga-o'zi so'rov yuborib qulaydi (production'da hozircha bo'sh, shu sabab tarixi bor)
+YTDLP_PYTHON=            # ixtiyoriy, default "python" — Linux Docker konteynerida (Dockerfile) "python3" deb ANIQ ko'rsatilishi kerak, "python" har doim ham mavjud emas
 YTDLP_FFMPEG_LOCATION=   # ffmpeg bin papkasi, Linux'da PATH'da bo'lsa bo'sh qoldirish mumkin
 DOWNLOAD_CONCURRENCY=    # ixtiyoriy, default 2 (Windows dev'da 3+ DLL_INIT_FAILED bergan — yuqoriga qarang)
 NGROK_BIN=               # ngrok.exe to'liq yo'li — OLINGAN va sozlangan (winget joyi emas, `ngrok update`dan keyingi WindowsApps joyi)
@@ -129,7 +145,8 @@ NGROK_AUTHTOKEN=         # ngrok dashboard'dan, bepul — OLINGAN va sozlangan
 `.env` `.gitignore`da, repo'ga tushmaydi. **Diqqat**: `TELEGRAM_API_ID`/`HASH` va `NGROK_AUTHTOKEN` real qiymatlar chatda ochiq yuborilgan — production'ga o'tishda bu ham maxfiy saqlanishi kerak (repo'ga tushmasligi allaqachon ta'minlangan, `.gitignore` orqali).
 
 ## SSH kalit
-VPS uchun mahalliy kompyuterda tayyorlangan: `~/.ssh/oracle_vps` (nomi tarixiy, Hetzner uchun ham ishlatilmoqda). Public key Hetzner Console'ga qo'shilgan.
+- `~/.ssh/oracle_vps` — eski, Hetzner/Oracle rejasi uchun tayyorlangan (nomi tarixiy). Hozirgi production serverda ishlatilmaydi.
+- `~/.ssh/iep_server` — **hozirgi production server** (`iep-server@100.111.79.124`, Tailscale IP) uchun 2026-09-02'da yaratilgan. Public key serverdagi `~/.ssh/authorized_keys`ga qo'lda qo'shilgan. `iep-server` foydalanuvchisi `docker` guruhiga qo'shilgan (`sudo usermod -aG docker iep-server`) — shuning uchun `sudo`siz `docker ps`/`docker logs`/`docker cp` ishlaydi.
 
 ## Hozirgi holat / navbatdagi qadamlar
 1. ✅ Kod qayta yozildi (Postgres, queue, kesh)
@@ -149,11 +166,12 @@ VPS uchun mahalliy kompyuterda tayyorlangan: `~/.ssh/oracle_vps` (nomi tarixiy, 
 15. ✅ **Loglash tizimi** (winston, fayl+konsol, kunlik rotatsiya) va global crash handler'lar qo'shildi — shu bilan 2 ta eski ko'rinmas xato (unawaited `setMyCommands`, parallel `BotDescription` so'rovlaridan rate-limit) topilib tuzatildi
 16. ✅ **Burst/katta-video himoyasi**: `expireInMinutes` 15→60, `Queue.isQueueFull()` orqali 50+ navbatda "band" xabari
 17. ⬜ TikTok bu tarmoqdan network darajasida ochilmaydi (VPN kerak, alohida masala) — yagona ochiq platforma muammosi
-18. ⬜ Lokal test to'liq muvaffaqiyatli bo'lgach: Hetzner tasdiqlashni yakunlash ($25 karta orqali, foydalanuvchi o'zi kiritadi) → CX22 server yaratish → SSH orqali production deploy. **Diqqat**: VPS'da yt-dlp uchun Python3 + pip + ffmpeg o'rnatish kerak bo'ladi (`apt install python3-pip ffmpeg`, keyin `pip install yt-dlp curl_cffi "yt-dlp[default]"`), Cobalt endi kerak emas. Local telegram-bot-api uchun ham xuddi shu `TELEGRAM_API_ID`/`HASH`ni VPS'ning `.env`iga ko'chirish kifoya. Production'da odatda `BaseURL` (haqiqiy domen) ishlatiladi — shunda ngrok/`ConnectionManager` umuman kerak bo'lmaydi, `DOWNLOAD_CONCURRENCY` ham VPS resurslariga qarab oshirilishi mumkin.
-19. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
+18. ✅ **Production deploy yakunlandi** (2026-09-02): Hetzner o'rniga mavjud Ubuntu+Coolify server ishlatildi (batafsil yuqoridagi "Production deploy" bo'limida). Domen `https://downloader.saidmurod.com`, Cloudflare Tunnel orqali. 5 ta muammo (BOT_API_URL, DATABASE_URL, Cloudflare sertifikat, Tunnel marshruti, Python/yt-dlp yo'qligi) topilib tuzatildi. Real YouTube video yuklab-yuborish tasdiqlandi.
+19. ⬜ **VPS'da hali qilinmagan**: local `telegram-bot-api` server deploy qilish (50MB→2000MB limit uchun, `docker-compose.yml` tayyor, `TELEGRAM_API_ID`/`HASH` allaqachon `.env`da bor) — ixtiyoriy keyingi qadam. `DOWNLOAD_CONCURRENCY` ham server resurslariga qarab oshirilishi mumkin (hozir standart 2).
+20. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
 
 ## Qabul qilingan qoidalar / kelishuvlar
 - Avval asosiy oqim to'liq ishga tushirilib sinaladi, **keyin** premium/reklama qatlami qo'shiladi (foydalanuvchi qarori).
-- Pul sarflashdan oldin: **avval lokal Docker bilan bepul sinash**, faqat lokal test muvaffaqiyatli bo'lgach Hetzner'ga $25 to'lanadi (foydalanuvchi qarori).
+- Pul sarflashdan oldin: **avval lokal Docker bilan bepul sinash** (bajarildi) — production uchun esa Hetzner to'lovi shart bo'lmadi, mavjud Coolify server ishlatildi (yuqoriga qarang).
 - Xavfsizlik qoidasi: Claude karta raqami, parol yoki shaxsiy hujjatlarni hech qachon o'zi kiritmaydi/yubormaydi — bunday joylarda foydalanuvchidan so'raladi.
 - Xavfsizlik: Neon parolini foydalanuvchi chatda ochiq yubordi — dashboard'dan rotate qilish tavsiya etilgan, hali tasdiqlanmagan/bajarilmagan.
