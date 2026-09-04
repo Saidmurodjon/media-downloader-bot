@@ -29,7 +29,10 @@ module.exports = class Controllers {
   static async MessageController(ctx, bot) {
     const chat_id = ctx.message.chat.id;
     const user = await UserModel.findOne(chat_id);
-    const text = ctx.message.text;
+    // In groups Telegram appends "@BotUsername" to commands to disambiguate
+    // between multiple bots (e.g. "/start@UpperDownloaderBot") — strip it so
+    // the plain-string command checks below still match.
+    const text = ctx.message.text.replace(/^(\/\w+)@\S+/, "$1");
 
     if (!(await AdminModel.isAdmin(chat_id))) {
       const missing = await Subscription.getMissingChannels(ctx.telegram, ctx.from.id);
