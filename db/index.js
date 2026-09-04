@@ -1,9 +1,12 @@
 const { Pool } = require("pg");
 const { DATABASE_URL } = require("../config");
 
+// Neon requires SSL (its URLs carry sslmode=require); a locally-hosted
+// Postgres on the same server/network has no SSL listener, so forcing ssl
+// here would break that connection entirely.
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: /sslmode=require/.test(DATABASE_URL) ? { rejectUnauthorized: false } : false,
 });
 
 async function initSchema() {
