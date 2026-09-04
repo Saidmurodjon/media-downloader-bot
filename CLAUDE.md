@@ -25,6 +25,13 @@ Lokal sinovda Cobalt (self-hosted, `ghcr.io/imputnet/cobalt:10`, Docker) ba'zi Y
 ### Guruhga qo'shish tugmasi (admin tomonidan yoqib/o'chiriladi)
 `bot_settings` jadvalida (`key`/`value`) `show_add_to_group_button` bayrog'i saqlanadi (`admin/BotSettings.js`). Yoqilgan bo'lsa, har bir yuborilgan video/audio ostida `https://t.me/{username}?startgroup=true` havolali tugma chiqadi. `/admin` menyusidan boshqariladi. Standart holat: **o'chirilgan**.
 
+### Guruhda ishlashdagi 2 ta xato topildi va tuzatildi (2026-09-04)
+Bot birinchi marta haqiqiy guruhda sinalganda ikkita eski, ko'rinmas xato topildi (ikkalasi ham DB migratsiyasiga aloqasi yo'q — sof `Controllers.js` mantig'idagi kamchiliklar, oldindan mavjud edi, shunchaki hech qachon haqiqiy guruh bilan sinalmagan edi):
+1. **Bot guruhda umuman javob bermasdi**: `MessageController` `UserModel.findOne(chat_id)`dan qaytgan `user`ni har doim mavjud deb hisoblab, to'g'ridan-to'g'ri `user.language`ga murojaat qilardi. `users` jadvalidagi yozuv faqat `/start` bosilgandan keyin yaratiladi — guruhning o'z `chat_id`si uchun bu hech qachon sodir bo'lmaydi (guruhda alohida-alohida `/start` tushunchasi yo'q). Natija: `TypeError: Cannot read properties of null (reading 'language')`, global xato ushlagich uni jimgina loglab qo'yardi, foydalanuvchiga hech narsa qaytmasdi. **Tuzatish**: barcha `user.language`/`user.step` murojaatlari `user?.language`/`user?.step`ga o'zgartirildi (`t()` funksiyasi allaqachon `undefined` til uchun standart tilga (`texts.in`) qaytish mantig'iga ega edi — muammo faqat null-safety yo'qligida edi). Bu xato nazariy jihatdan har qanday **yangi shaxsiy chat**da ham, agar foydalanuvchi birinchi xabar sifatida to'g'ridan-to'g'ri havola yuborsa (aniq "/start" yozmasdan), yuz berishi mumkin edi.
+2. **`/start`, `/about`, `/language` guruhda ishlamasdi (video/havola ishlagani holda)**: Telegram guruh chatlarida bir nechta bot bo'lsa buyruqlarga bot username qo'shib yuboradi (`/start@UpperDownloaderBot`). `Controllers.js` buyruqni oddiy `text == "/start"` taqqoslash orqali tekshirardi — bu shakl mos kelmay, buyruq "tanilmagan havola" sifatida rad etilardi. `/admin` buyrug'iga ta'sir qilmadi, chunki u Telegraf'ning o'z `bot.command()` orqali ro'yxatga olingan (u bu suffiksni avtomatik kesib tashlaydi). **Tuzatish**: `MessageController` boshida `ctx.message.text`dan `@BotUsername` qismi regex bilan kesib tashlanadi, keyin taqqoslash davom etadi.
+
+Ikkalasi ham production'da real guruh bilan tasdiqlandi (commit `80cf254`, `b5ca9b1`).
+
 ## Admin panel, statistika, majburiy obuna, reklama (2026-07-24/25'da qo'shildi)
 
 - **Admin aniqlash**: dinamik, DB'da (`users.is_admin`). Birinchi admin `.env`dagi `ADMIN_ID` orqali bootstrap qilinadi (`AdminModel.bootstrapAdmin`, har startup'da upsert — idempotent). Keyingi adminlar `/admin` menyusidan (mavjud admin tomonidan) qo'shiladi/olib tashlanadi.
@@ -166,7 +173,7 @@ NGROK_AUTHTOKEN=         # ngrok dashboard'dan, bepul — OLINGAN va sozlangan
 4. ✅ Xato xabarlari aniqlashtirildi (video mavjud emas / juda katta / timeout / jarayon-qulashi — tilga mos, avtomatik retry)
 5. ✅ **Admin panel** (`/admin`, inline keyboard): statistika, reklama (matn/rasm/video/albom, tugma, qayta yuborish, tarix), admin/kanal boshqaruvi — real sinovdan o'tdi
 6. ✅ **Ko'p-kanalli majburiy obuna**: join/leave kuzatuvi, reja va bildirishnoma — kod tayyor, real kanal bilan hali to'liq sinov qilinmagan
-7. ✅ **Video/audio tanlov tugmasi**, caption (sarlavha + bot username, entities bilan formatlash saqlanadi), thumbnail, ixtiyoriy "guruhga qo'shish" tugmasi — real sinovdan o'tdi, foydalanuvchi tasdiqladi
+7. ✅ **Video/audio tanlov tugmasi**, caption (sarlavha + bot username, entities bilan formatlash saqlanadi), thumbnail, ixtiyoriy "guruhga qo'shish" tugmasi — real sinovdan o'tdi, foydalanuvchi tasdiqladi. Guruhda birinchi real sinovda 2 ta xato topildi va tuzatildi (2026-09-04, yuqoridagi "Guruhda ishlashdagi 2 ta xato" bo'limiga qarang) — endi guruhda ham to'liq ishlaydi
 8. ✅ **Local telegram-bot-api server** sozlandi (`TELEGRAM_API_ID`/`HASH` olindi) — fayl limiti 2000MB'ga ko'tarildi, yuklash tezligi ham sezilarli yaxshilandi
 9. ✅ **Parallel yuklab olish** (`DOWNLOAD_CONCURRENCY=2`) — ko'p-foydalanuvchili tezlik uchun, resurs-qulashi muammosi tuzatilgan
 10. ✅ **Gibrid webhook/polling** (ngrok) — real outage+recovery sinovidan o'tdi, ~1 daqiqada ikkala yo'nalishda ham avtomatik almashadi
