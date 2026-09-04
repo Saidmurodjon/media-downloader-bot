@@ -66,18 +66,18 @@ module.exports = class Controllers {
 
     if (text === "/about") {
       await ctx.replyWithChatAction("typing");
-      await ctx.telegram.sendMessage(chat_id, t(user.language, "abaut"));
+      await ctx.telegram.sendMessage(chat_id, t(user?.language, "abaut"));
       return;
     }
 
     const platform = detectPlatform(text);
     if (!platform) {
-      await ctx.telegram.sendMessage(chat_id, t(user.language, "wrong"));
+      await ctx.telegram.sendMessage(chat_id, t(user?.language, "wrong"));
       return;
     }
 
     pendingRequests.set(chat_id, { url: text, platform });
-    await ctx.telegram.sendMessage(chat_id, t(user.language, "choose_format"), {
+    await ctx.telegram.sendMessage(chat_id, t(user?.language, "choose_format"), {
       reply_markup: {
         inline_keyboard: [
           [
@@ -119,30 +119,30 @@ module.exports = class Controllers {
       }
 
       if (await Queue.isQueueFull()) {
-        await ctx.telegram.sendMessage(chat_id, t(user.language, "err_busy"));
+        await ctx.telegram.sendMessage(chat_id, t(user?.language, "err_busy"));
         return;
       }
 
       await ctx.replyWithChatAction(format === "audio" ? "upload_voice" : "upload_video");
-      const status = await ctx.telegram.sendMessage(chat_id, t(user.language, "processing"));
+      const status = await ctx.telegram.sendMessage(chat_id, t(user?.language, "processing"));
       await Queue.enqueue({
         chatId: chat_id,
         url,
         platform,
         format,
         statusMessageId: status.message_id,
-        language: user.language,
+        language: user?.language,
       });
     } catch (err) {
       logger.error("MessageController failed", { chatId: chat_id, error: err.stack || String(err) });
-      await ctx.telegram.sendMessage(chat_id, t(user.language, "er"));
+      await ctx.telegram.sendMessage(chat_id, t(user?.language, "er"));
     }
   }
 
   static async InlineController(ctx) {
     const up = ctx.update.callback_query;
     const user = await UserModel.findOne(up.from.id);
-    if ((up.data === "uz" || up.data === "ru" || up.data === "in") && user.step >= 1) {
+    if ((up.data === "uz" || up.data === "ru" || up.data === "in") && user?.step >= 1) {
       await Functions.ChooseLanguage(ctx);
     }
   }
