@@ -8,7 +8,7 @@ YouTube, Instagram va TikTok'dan videolarni Telegram botga yuklab beruvchi bot. 
 Eski holat: MongoDB + Telegraf webhook (Express) + TikTok uchun RapidAPI (hardcoded kalit bilan, endi o'chirilgan), Instagram/YouTube ishlamas edi. Bu loyiha "Cloudflare'da deploy qilingan" deb boshlangan edi, lekin Cloudflare Workers'da yt-dlp/Cobalt kabi og'ir, uzoq davom etadigan jarayonlarni ishga tushirib bo'lmaydi (CPU vaqti cheklangan, arbitrary process yo'q) — shu sabab noto'g'ri platforma bo'lgan va loyiha tugallanmay qolgan edi.
 
 Yangi stack:
-- **DB**: MongoDB → **Neon (serverless Postgres)**. Ulanish `db/index.js` (pg Pool). Jadvallar: `users`, `video_cache`.
+- **DB**: MongoDB → Neon (serverless Postgres) → **2026-09-04'da production serverdagi self-hosted Postgres'ga ko'chirildi** (pastga, "DB migratsiyasi" bo'limiga qarang). Ulanish `db/index.js` (pg Pool). Jadvallar: `users`, `video_cache`.
 - **Video olib berish**: RapidAPI scraperlar → **self-hosted Cobalt** → keyinroq **yt-dlp** (pastga qarang, sabab bilan). Klient: `services/ytdlp.js`.
 - **Navbat**: sinxron/bloklovchi yuklab olish → **pg-boss** (Postgres-based queue, Redis shart emas — Neon'ning o'zida ishlaydi). `queue/index.js`, `queue/downloadAndSend.js`. Tanlov sababi: yuklab olish job'i soniya-daqiqalar davom etadi, queue dispatch tezligi ahamiyatsiz — Redis/BullMQ qo'shimcha infratuzilma bo'lardi, foydasiz murakkablik.
 - **Kesh**: `video_cache` jadvalida URL → Telegram `file_id`. Bir marta yuklangan video qayta so'ralsa, tarmoqqa umuman murojaat qilinmaydi — darhol qayta yuboriladi. Bu ko'p foydalanuvchili yukni eng ko'p kamaytiruvchi omil.
@@ -89,6 +89,16 @@ Shu bilan birga `process.on("uncaughtException"/"unhandledRejection")` va `bot.c
 - **Instagram Stories ishlamaydi (qasddan, tuzatilmagan)**: `[instagram:story] ...: You need to log in to access this content` — Stories oddiy post/Reels'dan farqli, faqat login qilingan holatda ko'rinadi, yt-dlp cookie'siz umuman ololmaydi. 2026-09-02'da production'da real foydalanuvchi havolasi bilan tasdiqlandi. Tuzatish uchun alohida Instagram akkaunt cookie'sini serverga joylashtirish kerak bo'lardi — akkaunt bloklanish xavfi va cookie yangilab turish og'irligi sababli **ataylab qilinmadi** (foydalanuvchi qarori). TikTok bilan bir qatorda "bilingan, hal qilinmagan" cheklov.
 - **Muhim topilma — parallel yuklab olish resurs muammosi**: `pg-boss` standart holda faqat 1 ta job'ni bir vaqtda qayta ishlaydi (`teamSize`/`teamConcurrency: 1`) — bu ko'p-foydalanuvchili tezlikka yomon ta'sir qilardi, shuning uchun oshirilgan edi. Lekin **3 taga** oshirilganda bu Windows dev kompyuterida `STATUS_DLL_INIT_FAILED` (`0xC0000142`, exit code `3221225794`) bilan yt-dlp/ffmpeg jarayonlarini qulatib qo'ydi (resurs yetishmovchiligi). Hal qilindi: `DOWNLOAD_CONCURRENCY` env orqali sozlanadigan qilindi, standart **2**ga tushirildi (VPS'da oshirish mumkin), va bu turdagi qulash (stderr bo'sh bo'lgan nonzero exit) endi `"process_crash"` deb belgilanib, `"empty_download"` kabi bir marta avtomatik qayta uriniladi (`queue/index.js`, `services/ytdlp.js`).
 
+## DB migratsiyasi: Neon → self-hosted Postgres (2026-09-04)
+
+Neon (AWS us-east-2) production serverdan (Yevropa) o'lchansa har bir so'rov **~177ms** tarmoq safari olar edi (`SELECT 1` bilan sinaldi, server'dan). Bu `video_cache` tekshiruvi va `pg-boss` navbat poll'i kabi har-so'rovda ishlaydigan operatsiyalar uchun sezilarli edi. Yechim: bot bilan **bir xil serverda**, alohida Docker konteynerida (`mediabot-postgres`, `postgres:16-alpine`, `coolify` tarmog'ida, tashqariga port ochilmagan) yangi Postgres ko'tarildi, Neon'dagi barcha ma'lumot (`pg_dump`/`psql` orqali, versiya farqi sabab `postgres:18-alpine` client ishlatildi — Neon Postgres 18'da) bir martalik ko'chirildi, qator sonlari solishtirilib tasdiqlandi. Natija: xuddi shu `SELECT 1` **~0.09ms** — **~2000 marta tezroq**, chunki tarmoq safari umuman yo'q (konteynerlar orasidagi ichki Docker tarmog'i).
+
+`db/index.js`dagi `ssl: { rejectUnauthorized: false }` shartli qilindi (`DATABASE_URL`da `sslmode=require` bo'lsa SSL, aks holda yo'q) — Neon SSL talab qiladi, lokal Postgres'da SSL listener umuman yo'q, shu sabab avvalgi qattiq-belgilangan holat lokal ulanishni butunlay buzardi. `pg-boss` (`queue/index.js`) o'zgarishsiz qoldi — u URL'dagi `sslmode` parametriga qarab avtomatik hal qiladi.
+
+Yangi `DATABASE_URL` shakli: `postgresql://mediabot:***@mediabot-postgres:5432/mediabot` (host — konteyner nomi, Docker'ning ichki DNS'i orqali hal bo'ladi, faqat `coolify` tarmog'idagi konteynerlar uchun ko'rinadi). Neon akkaunt/baza **o'chirilmadi** — ehtiyot nusxa/qaytarish yo'li sifatida saqlanmoqda, lekin endi ishlatilmaydi.
+
+**Diqqat — backup**: Neon'ning avtomatik backup/PITR imkoniyati endi ishlamaydi (ma'lumot endi Neon'da yangilanmaydi). Lokal Postgres uchun mustaqil backup (masalan, kunlik `pg_dump` cron + serverdan tashqariga nusxalash) hali **sozlanmagan** — bu keyingi qadam sifatida qoldirilgan.
+
 ## Production deploy — Ubuntu + Coolify + Cloudflare Tunnel (2026-09-02) — ISHLAYAPTI
 
 Bot foydalanuvchining mavjud Ubuntu serveriga (Coolify o'rnatilgan, Tailscale orqali masofadan boshqariladi — Tailscale IP `100.111.79.124`, SSH user `iep-server`) yangi Coolify loyihasi sifatida deploy qilindi. Serverning haqiqiy public IP'i yo'q — tashqi trafik **Cloudflare Tunnel** (`cloudflared` systemd xizmati, tunnel nomi `iep`) orqali kiradi, Tailscale esa faqat admin (Claude/foydalanuvchi) uchun SSH kirish yo'li.
@@ -132,7 +142,7 @@ Muammolar SSH orqali (`ssh -i ~/.ssh/iep_server iep-server@100.111.79.124`, key 
 TOKEN=
 BaseURL=                 # bo'sh = lokal gibrid webhook/polling; to'ldirilsa = fixed webhook (production)
 PORT=
-DATABASE_URL=            # Neon connection string — SINALGAN, ishlaydi. Diqqat: oxirida bitta "?sslmode=require" bo'lsin (ikkita "??" pg-boss'ni SSL talabini aniqlay olmay qulatgan — 2026-09-02'da topilgan)
+DATABASE_URL=            # Production'da 2026-09-04'dan beri LOKAL Postgres (postgresql://mediabot:***@mediabot-postgres:5432/mediabot, sslmode YO'Q) — Neon endi ishlatilmaydi (tarixi uchun yuqoridagi "DB migratsiyasi" bo'limiga qarang). Neon'ga qaytilsa: oxirida bitta "?sslmode=require" bo'lsin (ikkita "??" pg-boss'ni SSL talabini aniqlay olmay qulatgan — 2026-09-02'da topilgan)
 ADMIN_ID=                # birinchi admin chat_id (bootstrap uchun)
 TELEGRAM_API_ID=         # my.telegram.org'dan, bepul — OLINGAN va sozlangan
 TELEGRAM_API_HASH=       # my.telegram.org'dan, bepul — OLINGAN va sozlangan
@@ -168,6 +178,7 @@ NGROK_AUTHTOKEN=         # ngrok dashboard'dan, bepul — OLINGAN va sozlangan
 16. ✅ **Burst/katta-video himoyasi**: `expireInMinutes` 15→60, `Queue.isQueueFull()` orqali 50+ navbatda "band" xabari
 17. ⬜ TikTok bu tarmoqdan network darajasida ochilmaydi (VPN kerak, alohida masala) — yagona ochiq platforma muammosi
 18. ✅ **Production deploy yakunlandi** (2026-09-02): Hetzner o'rniga mavjud Ubuntu+Coolify server ishlatildi (batafsil yuqoridagi "Production deploy" bo'limida). Domen `https://downloader.saidmurod.com`, Cloudflare Tunnel orqali. 5 ta muammo (BOT_API_URL, DATABASE_URL, Cloudflare sertifikat, Tunnel marshruti, Python/yt-dlp yo'qligi) topilib tuzatildi. Real YouTube video yuklab-yuborish tasdiqlandi.
+19a. ✅ **DB Neon'dan self-hosted Postgres'ga ko'chirildi** (2026-09-04): sabab va o'lchov natijalari yuqoridagi "DB migratsiyasi" bo'limida (~2000x tezroq so'rov). Backup strategiyasi hali sozlanmagan (⬜ keyingi qadam).
 19. ⬜ **VPS'da hali qilinmagan**: local `telegram-bot-api` server deploy qilish (50MB→2000MB limit uchun, `docker-compose.yml` tayyor, `TELEGRAM_API_ID`/`HASH` allaqachon `.env`da bor) — ixtiyoriy keyingi qadam. `DOWNLOAD_CONCURRENCY` ham server resurslariga qarab oshirilishi mumkin (hozir standart 2).
 20. ⬜ Keyingi bosqich (foydalanuvchi tasdiqlagan tartib bo'yicha **keyin**): premium tarif (reklamasiz, navbatda ustuvor — pg-boss job priority orqali). To'lov uchun tavsiya: Telegram Stars (eng oson integratsiya). Reklama qismi allaqachon qo'shildi (band 5).
 
